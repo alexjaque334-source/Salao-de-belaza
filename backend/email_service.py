@@ -11,11 +11,13 @@ from dotenv import load_dotenv
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-EMAIL_BASE_URL = "https://integrations.emergentagent.com"
-EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY", "")
-EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "BarberStudio")
+# Own-account Resend, read entirely from environment (nothing in code/chat).
+RESEND_API_URL = "https://api.resend.com/emails"
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+# Full RFC "Name <email@domain>" sender. Must be a verified Resend sender/domain.
+RESEND_FROM = os.environ.get("RESEND_FROM", "BarberStudio <onboarding@resend.dev>")
 EMAIL_REPLY_TO = os.environ.get("EMAIL_REPLY_TO")
-APP_URL = os.environ.get("APP_URL", "https://barber-loyalty-14.preview.emergentagent.com")
+APP_URL = os.environ.get("APP_URL", "https://example.com")
 
 _SHORTENERS = ("bit.ly", "tinyurl.com", "t.co", "is.gd", "cutt.ly", "goo.gl", "rebrand.ly")
 _CRED_ASK = ("reply with your password", "reply with the code", "send your password", "cvv",
@@ -92,13 +94,16 @@ def _assert_safe_email(subject: str, html: str) -> None:
 
 async def send_email(*, to: str, subject: str, html: str) -> str | None:
     _assert_safe_email(subject, html)
-    payload = {"to": [to], "subject": subject, "html": html, "from_name": EMAIL_FROM_NAME}
+    if not RESEND_API_KEY:
+        logger.info("RESEND_API_KEY not configured; skipping email send.")
+        return None
+    payload = {"from": RESEND_FROM, "to": [to], "subject": subject, "html": html}
     if EMAIL_REPLY_TO:
-        payload["contact_email"] = EMAIL_REPLY_TO
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            f"{EMAIL_BASE_URL}/api/v1/email/send",
-            headers={"X-Email-Key": EMAIL_KEY},
+        payload["reply_to"] = EMAIL_REPLY_TO
+    async with httpx.AsyncClient(timeout=30) as hc:
+        resp = await hc.post(
+            RESEND_API_URL,
+            headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
             json=payload,
         )
     resp.raise_for_status()
@@ -107,12 +112,12 @@ async def send_email(*, to: str, subject: str, html: str) -> str | None:
 
 def _fmt_date(d: str) -> str:
     try:
-        return "-".join(reversed(d.split("-")[:3])) if False else "/".join(reversed(d.split("-")))
+        return "/".join(reversed(d.split("-")))
     except Exception:
         return d
 
 
-def _wrap(title: str, inner: str) -> str:
+def _wrap(shop: str, inner: str) -> str:
     return (
         '<table role="presentation" width="100%" style="background:#0a0a0c;padding:24px 0">'
         '<tr><td align="center">'
@@ -121,11 +126,12 @@ def _wrap(title: str, inner: str) -> str:
         '<tr><td style="padding:22px 28px;background:#18120a;border-bottom:1px solid #272730">'
         '<span style="font-family:Arial,sans-serif;font-size:20px;font-weight:800;color:#f59e0b">'
         'BARBER</span><span style="font-family:Arial,sans-serif;font-size:20px;font-weight:800;'
-        'color:#fafafa">STUDIO</span></td></tr>'
+        f'color:#fafafa">STUDIO</span> &nbsp;<span style="font-family:Arial,sans-serif;font-size:13px;'
+        f'color:#a1a1aa">{escape(shop)}</span></td></tr>'
         f'<tr><td style="padding:28px;font-family:Arial,sans-serif;color:#e4e4e7">{inner}</td></tr>'
         '<tr><td style="padding:18px 28px;border-top:1px solid #272730;font-family:Arial,sans-serif;'
-        'font-size:12px;color:#71717a">Enviado por BarberStudio. Nunca pedimos sua senha ou dados de '
-        'cartão por e-mail.</td></tr>'
+        f'font-size:12px;color:#71717a">Enviado por {escape(shop)} via BarberStudio. Nunca pedimos sua '
+        'senha ou dados de cartão por e-mail.</td></tr>'
         '</table></td></tr></table>'
     )
 
@@ -156,35 +162,34 @@ def _cta(label: str) -> str:
 
 
 def booking_confirmation(appt: dict) -> tuple:
+    shop = appt.get("shop_name") or "BarberStudio"
     name = (appt.get("client_name") or "cliente").split(" ")[0]
     subject = f"Agendamento confirmado — {_fmt_date(appt.get('date',''))} às {appt.get('time','')}"
     inner = (
-        f'<p style="font-size:16px;margin:0 0 6px">Olá, {escape(name)}! 👋</p>'
-        '<p style="font-size:14px;color:#a1a1aa;margin:0 0 4px">'
-        'Seu horário na BarberStudio está <strong style="color:#10b981">confirmado</strong>. '
-        'Confira os detalhes abaixo:</p>'
+        f'<p style="font-size:16px;margin:0 0 6px">Olá, {escape(name)}!</p>'
+        f'<p style="font-size:14px;color:#a1a1aa;margin:0 0 4px">Seu horário na {escape(shop)} está '
+        '<strong style="color:#10b981">confirmado</strong>. Confira os detalhes:</p>'
         f'{_detail_rows(appt)}'
-        '<p style="font-size:13px;color:#a1a1aa;margin:0 0 18px">'
-        'Precisa remarcar? Acesse sua conta e gerencie seus agendamentos.</p>'
+        '<p style="font-size:13px;color:#a1a1aa;margin:0 0 18px">Precisa remarcar? Acesse sua conta.</p>'
         f'{_cta("Ver meus agendamentos")}'
     )
-    return subject, _wrap(subject, inner)
+    return subject, _wrap(shop, inner)
 
 
 def booking_reminder(appt: dict) -> tuple:
+    shop = appt.get("shop_name") or "BarberStudio"
     name = (appt.get("client_name") or "cliente").split(" ")[0]
     subject = f"Lembrete: seu corte é amanhã às {appt.get('time','')}"
     inner = (
-        f'<p style="font-size:16px;margin:0 0 6px">Olá, {escape(name)}! ✂️</p>'
-        '<p style="font-size:14px;color:#a1a1aa;margin:0 0 4px">'
-        'Passando para lembrar do seu horário <strong style="color:#f59e0b">amanhã</strong> '
-        'na BarberStudio:</p>'
+        f'<p style="font-size:16px;margin:0 0 6px">Olá, {escape(name)}!</p>'
+        f'<p style="font-size:14px;color:#a1a1aa;margin:0 0 4px">Lembrete do seu horário '
+        f'<strong style="color:#f59e0b">amanhã</strong> na {escape(shop)}:</p>'
         f'{_detail_rows(appt)}'
-        '<p style="font-size:13px;color:#a1a1aa;margin:0 0 18px">'
-        'Chegue com alguns minutos de antecedência. Até lá!</p>'
+        '<p style="font-size:13px;color:#a1a1aa;margin:0 0 18px">Chegue com alguns minutos de '
+        'antecedência. Até lá!</p>'
         f'{_cta("Acessar minha conta")}'
     )
-    return subject, _wrap(subject, inner)
+    return subject, _wrap(shop, inner)
 
 
 async def safe_send_confirmation(appt: dict) -> bool:
@@ -194,7 +199,6 @@ async def safe_send_confirmation(appt: dict) -> bool:
     try:
         subject, html = booking_confirmation(appt)
         await send_email(to=to, subject=subject, html=html)
-        logger.info(f"Confirmation email sent to {to}")
         return True
     except Exception as e:
         logger.warning(f"Confirmation email not sent: {e}")
@@ -208,7 +212,6 @@ async def safe_send_reminder(appt: dict) -> bool:
     try:
         subject, html = booking_reminder(appt)
         await send_email(to=to, subject=subject, html=html)
-        logger.info(f"Reminder email sent to {to}")
         return True
     except Exception as e:
         logger.warning(f"Reminder email not sent: {e}")

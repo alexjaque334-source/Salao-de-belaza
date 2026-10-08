@@ -11,6 +11,7 @@ import Barbers from "@/pages/admin/Barbers";
 import Clients from "@/pages/admin/Clients";
 import Loyalty from "@/pages/admin/Loyalty";
 import Plans from "@/pages/admin/Plans";
+import Reports from "@/pages/admin/Reports";
 import Booking from "@/pages/client/Booking";
 import MyAppointments from "@/pages/client/MyAppointments";
 import ClientPlans from "@/pages/client/ClientPlans";
@@ -52,6 +53,7 @@ function AppRoutes() {
         <Route path="/clientes" element={<Clients />} />
         <Route path="/fidelizados" element={<Loyalty />} />
         <Route path="/planos" element={<Plans />} />
+        <Route path="/relatorios" element={<Reports />} />
       </Route>
 
       <Route element={<Protected role="client"><Shell /></Protected>}>

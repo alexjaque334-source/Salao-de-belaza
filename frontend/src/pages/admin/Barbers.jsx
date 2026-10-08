@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { btnPrimary, btnSecondary, card, input, badge, WEEKDAYS, WEEKDAY_LABELS } from "@/lib/styles";
 
 const emptyHours = WEEKDAYS.reduce((a, d) => ({ ...a, [d]: { start: "", end: "" } }), {});
-const defaultForm = { name: "", specialty: "", phone: "", avatar: "", active: true, working_hours: { ...emptyHours } };
+const defaultForm = { name: "", specialty: "", phone: "", avatar: "", active: true, commission_rate: 50, working_hours: { ...emptyHours } };
 
 export default function Barbers() {
   const [barbers, setBarbers] = useState([]);
@@ -25,16 +25,18 @@ export default function Barbers() {
     setEditing(b);
     setForm({
       name: b.name, specialty: b.specialty || "", phone: b.phone || "", avatar: b.avatar || "",
-      active: b.active, working_hours: { ...emptyHours, ...(b.working_hours || {}) },
+      active: b.active, commission_rate: b.commission_rate ?? 50,
+      working_hours: { ...emptyHours, ...(b.working_hours || {}) },
     });
     setOpen(true);
   };
 
   const save = async () => {
     if (!form.name) { toast.error("Informe o nome."); return; }
+    const payload = { ...form, commission_rate: Number(form.commission_rate) };
     try {
-      if (editing) await api.put(`/barbers/${editing.id}`, form);
-      else await api.post("/barbers", form);
+      if (editing) await api.put(`/barbers/${editing.id}`, payload);
+      else await api.post("/barbers", payload);
       toast.success(editing ? "Barbeiro atualizado" : "Barbeiro cadastrado");
       setOpen(false); load();
     } catch (e) { toast.error(apiError(e)); }
@@ -72,6 +74,7 @@ export default function Barbers() {
                 {b.active ? "Ativo" : "Inativo"}
               </span>
               <span className={badge("bg-amber-500/10 text-amber-400 border-amber-500/20")}>{b.total_cuts || 0} cortes</span>
+              <span className={badge("bg-secondary text-foreground border-border")}>{b.commission_rate ?? 50}% comissão</span>
             </div>
             <div className="flex gap-2 mt-4">
               <button data-testid={`edit-barber-${b.id}`} onClick={() => openEdit(b)} className={btnSecondary + " flex-1"}><Pencil className="h-4 w-4" /> Editar</button>
@@ -90,6 +93,7 @@ export default function Barbers() {
               <div><label className="text-sm font-medium">Especialidade</label><input data-testid="barber-specialty-input" className={input + " mt-1"} value={form.specialty} onChange={(e) => setForm({ ...form, specialty: e.target.value })} /></div>
               <div><label className="text-sm font-medium">Telefone</label><input className={input + " mt-1"} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
               <div><label className="text-sm font-medium">Foto (URL)</label><input className={input + " mt-1"} value={form.avatar} onChange={(e) => setForm({ ...form, avatar: e.target.value })} /></div>
+              <div><label className="text-sm font-medium">Comissão (%)</label><input data-testid="barber-commission-input" type="number" min="0" max="100" className={input + " mt-1"} value={form.commission_rate} onChange={(e) => setForm({ ...form, commission_rate: e.target.value })} /></div>
             </div>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} className="accent-amber-500 h-4 w-4" /> Barbeiro ativo</label>
 

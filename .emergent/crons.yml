@@ -1,0 +1,8 @@
+crons:
+  - name: appt-reminders
+    description: "Envia e-mail de lembrete, uma vez por dia, para clientes com agendamento confirmado no dia seguinte"
+    cron: "0 12 * * *"
+    endpoint: "{{BASE_URL}}/api/cron/reminders"
+    method: POST
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    enabled: true

@@ -11,6 +11,9 @@ from datetime import datetime, timezone, timedelta, date as date_cls
 from bson import ObjectId
 import bcrypt
 import jwt
+import asyncio
+import hmac
+import email_service
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -112,6 +115,7 @@ class BarberIn(BaseModel):
     avatar: Optional[str] = ""
     phone: Optional[str] = ""
     active: bool = True
+    commission_rate: float = 50  # percent of service price paid to barber
     working_hours: dict = Field(default_factory=dict)  # {"mon": {"start":"09:00","end":"18:00"}, ...}
 
 class ServiceIn(BaseModel):
@@ -301,22 +305,26 @@ async def create_appointment(data: AppointmentIn, user: dict = Depends(get_curre
         client_id = data.client_id
         client_name = cust["name"] if cust else (data.client_name or "Cliente")
         client_phone = cust.get("phone", "") if cust else data.client_phone
+        client_email = cust.get("email", "") if cust else ""
     else:
         client_id = oid(user["_id"])
         client_name = user["name"]
         client_phone = user.get("phone", "")
+        client_email = user.get("email", "")
     doc = {
         "barber_id": data.barber_id, "barber_name": barber["name"],
         "service_id": data.service_id, "service_name": service["name"],
         "price": service.get("price", 0),
         "date": data.date, "time": data.time,
-        "client_id": client_id, "client_name": client_name, "client_phone": client_phone,
-        "status": "Confirmado",
+        "client_id": client_id, "client_name": client_name,
+        "client_phone": client_phone, "client_email": client_email,
+        "status": "Confirmado", "reminder_sent": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     out = dict(doc)
     res = await db.appointments.insert_one(doc)
     out["id"] = oid(res.inserted_id)
+    asyncio.create_task(email_service.safe_send_confirmation(out))
     return out
 
 @api_router.patch("/appointments/{appt_id}/status")
@@ -504,6 +512,71 @@ async def dashboard_stats(_: dict = Depends(require_admin)):
         "series": series,
     }
 
+# ---------------- Barber Reports ----------------
+@api_router.get("/reports/barbers")
+async def barber_report(month: Optional[str] = None, _: dict = Depends(require_admin)):
+    if not month:
+        month = datetime.now(timezone.utc).date().isoformat()[:7]
+    barbers = await db.barbers.find().to_list(500)
+    completed = await db.appointments.find({
+        "status": "Concluído", "date": {"$regex": f"^{month}"},
+    }).to_list(5000)
+    report = []
+    for b in barbers:
+        bid = oid(b["_id"])
+        rate = b.get("commission_rate", 50)
+        appts = [a for a in completed if a.get("barber_id") == bid]
+        revenue = sum(a.get("price", 0) for a in appts)
+        services = {}
+        for a in appts:
+            services[a.get("service_name", "?")] = services.get(a.get("service_name", "?"), 0) + 1
+        report.append({
+            "barber_id": bid,
+            "name": b["name"],
+            "avatar": b.get("avatar", ""),
+            "specialty": b.get("specialty", ""),
+            "commission_rate": rate,
+            "completed": len(appts),
+            "revenue": revenue,
+            "commission": round(revenue * rate / 100, 2),
+            "avg_ticket": round(revenue / len(appts), 2) if appts else 0,
+            "services": [{"name": k, "count": v} for k, v in sorted(services.items(), key=lambda x: -x[1])],
+        })
+    report.sort(key=lambda x: -x["revenue"])
+    totals = {
+        "revenue": sum(r["revenue"] for r in report),
+        "commission": sum(r["commission"] for r in report),
+        "completed": sum(r["completed"] for r in report),
+    }
+    return {"month": month, "report": report, "totals": totals}
+
+
+# ---------------- Cron: reminders ----------------
+@api_router.post("/cron/reminders")
+async def cron_reminders(request: Request):
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
+    auth = request.headers.get("Authorization", "")
+    token = auth[7:] if auth.startswith("Bearer ") else ""
+    if not secret or not hmac.compare_digest(token, secret):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    asyncio.create_task(_run_reminders())
+    return {"ok": True}
+
+
+async def _run_reminders():
+    brt = timezone(timedelta(hours=-3))
+    target = (datetime.now(brt) + timedelta(days=1)).date().isoformat()
+    appts = await db.appointments.find({
+        "date": target, "status": "Confirmado", "reminder_sent": {"$ne": True},
+    }).to_list(1000)
+    for a in appts:
+        sent = await email_service.safe_send_reminder(a)
+        if sent:
+            await db.appointments.update_one({"_id": a["_id"]}, {"$set": {"reminder_sent": True}})
+    logger.info(f"Reminders processed for {target}: {len(appts)} appointment(s)")
+
+
 app.include_router(api_router)
 
 app.add_middleware(
@@ -553,13 +626,13 @@ async def seed():
         await db.barbers.insert_many([
             {"name": "Marcos Silva", "specialty": "Fade & Degradê", "phone": "(11) 99999-1111",
              "avatar": "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?crop=entropy&cs=srgb&fm=jpg&q=85&w=400",
-             "active": True, "working_hours": DEFAULT_HOURS, "total_cuts": 0},
+             "active": True, "commission_rate": 50, "working_hours": DEFAULT_HOURS, "total_cuts": 0},
             {"name": "Rafael Costa", "specialty": "Barba & Navalha", "phone": "(11) 99999-2222",
              "avatar": "https://images.unsplash.com/photo-1599351431202-1e0f0137899a?crop=entropy&cs=srgb&fm=jpg&q=85&w=400",
-             "active": True, "working_hours": DEFAULT_HOURS, "total_cuts": 0},
+             "active": True, "commission_rate": 45, "working_hours": DEFAULT_HOURS, "total_cuts": 0},
             {"name": "Diego Alves", "specialty": "Cortes Clássicos", "phone": "(11) 99999-3333",
              "avatar": "https://images.unsplash.com/photo-1536520002442-39764a41e987?crop=entropy&cs=srgb&fm=jpg&q=85&w=400",
-             "active": True, "working_hours": DEFAULT_HOURS, "total_cuts": 0},
+             "active": True, "commission_rate": 55, "working_hours": DEFAULT_HOURS, "total_cuts": 0},
         ])
 
     if await db.plans.count_documents({}) == 0:

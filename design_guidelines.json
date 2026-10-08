@@ -1,0 +1,153 @@
+{
+  "project_title": "BarberStudio CRM & Client Self-Service Booking System",
+  "theme_archetype": "ARCHETYPE 5: LUXURY & VINTAGE INDUSTRIAL (Noir Leather & Burnished Amber)",
+  "design_language": {
+    "vibe": "High-end bespoke barbershop, dark obsidian surfaces, warm amber-gold brass accents, crisp contrast, refined typography, smooth transitions",
+    "theme_mode": "Dark-first luxury theme (default dark mode with togglable refined light mode)",
+    "primary_font": "Outfit, sans-serif (Headings and high-impact UI elements)",
+    "body_font": "Plus Jakarta Sans, sans-serif (Body text, data tables, form inputs)",
+    "accent_font": "Cinzel / Cormorant Garamond (Subtle luxury badges & overlines)"
+  },
+  "typography": {
+    "font_imports": [
+      "https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,600;1,500&display=swap"
+    ],
+    "headings": {
+      "font_family": "'Outfit', sans-serif",
+      "h1": "text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-amber-50 leading-tight",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-zinc-100",
+      "h3": "text-xl sm:text-2xl font-semibold tracking-normal text-zinc-100",
+      "h4": "text-lg font-semibold text-zinc-200"
+    },
+    "body": {
+      "font_family": "'Plus Jakarta Sans', sans-serif",
+      "regular": "text-sm sm:text-base font-normal text-zinc-300 leading-relaxed",
+      "small": "text-xs sm:text-sm text-zinc-400 font-medium",
+      "overline": "text-[11px] font-bold uppercase tracking-[0.2em] text-amber-500/90"
+    }
+  },
+  "colors": {
+    "dark_mode": {
+      "background_main": "#0A0A0C (rich deep obsidian charcoal)",
+      "surface_card": "#121216 (elevated dark slate container)",
+      "surface_card_hover": "#1A1A22 (subtle elevated highlight)",
+      "border": "#272730 (crisp 1px outline)",
+      "border_active": "#D97706 (warm amber glow)",
+      "text_primary": "#FAFAFA (crisp porcelain white)",
+      "text_secondary": "#A1A1AA (cool grey body)",
+      "text_muted": "#71717A (subtle muted labels)",
+      "accent_amber": "#D97706 (burnished gold primary accent)",
+      "accent_amber_light": "#F59E0B (vibrant interactive amber)",
+      "accent_emerald": "#10B981 (active status / booked confirmation)",
+      "accent_rose": "#F43F5E (cancellation / alert status)",
+      "badge_bg_amber": "rgba(217, 119, 6, 0.15)",
+      "badge_border_amber": "rgba(245, 158, 11, 0.3)"
+    },
+    "light_mode": {
+      "background_main": "#F8F8FA (soft warm plaster white)",
+      "surface_card": "#FFFFFF (clean white card)",
+      "surface_card_hover": "#F4F4F6",
+      "border": "#E4E4E7",
+      "text_primary": "#09090B (deep graphite)",
+      "text_secondary": "#52525B",
+      "accent_amber": "#B45309"
+    }
+  },
+  "layout_and_grids": {
+    "dashboard_grid": "grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6",
+    "bento_features_grid": "grid-cols-1 md:grid-cols-3 lg:grid-cols-12 gap-6",
+    "container_padding": "p-4 sm:p-6 lg:p-8",
+    "card_padding": "p-5 sm:p-6",
+    "section_spacing": "space-y-6 sm:space-y-8"
+  },
+  "key_features_and_views": {
+    "public_booking_tab": {
+      "description": "Client self-service booking step-by-step flow (1. Select Barber -> 2. Select Service -> 3. Select Date & Slot -> 4. Confirm Details). Real-time slot locking.",
+      "visual_style": "Hero-style booking card with barber avatars, active availability status indicator, interactive time slot chips that grey out once occupied."
+    },
+    "appointments_calendar_tab": {
+      "description": "Admin/Staff master schedule view. Filterable by barber, date picker, status chips (Confirmed, Completed, In-Progress, Cancelled, No-Show). Actionable buttons to add appointment, edit slot, or mark done.",
+      "visual_style": "Interactive grid/timeline view with color-coded appointment cards per barber."
+    },
+    "barbers_management_tab": {
+      "description": "Staff roster & working hours manager. Each barber has profile details, specialty tags, commission rate, custom weekly shift schedule (e.g., Mon-Fri 09:00-18:00), break times, and performance metrics.",
+      "visual_style": "Barber cards with toggleable working hours modal, photo upload preview, and total cuts counter."
+    },
+    "clients_crm_tab": {
+      "description": "Customer list with haircut history, preferred barber, total spend, loyalty points, visit frequency notes, and quick action buttons (Book New, Call, Edit Profile).",
+      "visual_style": "High density data table with avatar icons, loyalty tier badges (Bronze, Silver, Gold, VIP Black), search bar, filter by plan status."
+    },
+    "loyalty_clients_tab": {
+      "description": "Dedicated 'Clientes Fidelizados' VIP rewards tracking. Point balance, reward redemption history, automated discount codes, and VIP Tier upgrades.",
+      "visual_style": "Gamified loyalty cards, progress bars towards next free haircut, and reward claim buttons."
+    },
+    "plans_subscriptions_tab": {
+      "description": "Monthly Barber Subscription Plans ('Planos de Assinatura' e.g. Basic Fade - 2 cuts/mo, Executive VIP - Unlimited cuts + Beard, Club Premium). Active subscribers list & renewal tracking.",
+      "visual_style": "Pricing tier cards with glowing border beam effect on recommended plan, active subscriber metrics widget."
+    },
+    "dashboard_stats_tab": {
+      "description": "Executive summary with total revenue today/month, total appointments completed, top revenue barber, active subscribers count, quick actions bar.",
+      "visual_style": "Bento metric widgets with mini sparkline charts (Recharts / Lucide icons)."
+    }
+  },
+  "image_urls": {
+    "barbershop_hero_bg": "https://images.unsplash.com/photo-1585747860715-2ba37e788b70?crop=entropy&cs=srgb&fm=jpg&q=85",
+    "barber_chair_interior": "https://images.unsplash.com/photo-1536520002442-39764a41e987?crop=entropy&cs=srgb&fm=jpg&q=85",
+    "barber_tools_slate": "https://images.unsplash.com/photo-1621605815971-fbc98d665033?crop=entropy&cs=srgb&fm=jpg&q=85",
+    "barber_action_haircut": "https://images.unsplash.com/photo-1647140655214-e4a2d914971f?crop=entropy&cs=srgb&fm=jpg&q=85",
+    "barber_razor_trim": "https://images.unsplash.com/photo-1599351431202-1e0f0137899a?crop=entropy&cs=srgb&fm=jpg&q=85",
+    "barbershop_vintage_chair": "https://images.unsplash.com/photo-1592647420148-bfcc177e2117?crop=entropy&cs=srgb&fm=jpg&q=85",
+    "barber_sitting_chair": "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?crop=entropy&cs=srgb&fm=jpg&q=85"
+  },
+  "component_styling_rules": {
+    "buttons": {
+      "primary": "bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-zinc-950 font-bold px-5 py-2.5 rounded-xl shadow-lg shadow-amber-950/30 transition-all duration-200 active:scale-[0.98] border border-amber-400/40",
+      "secondary": "bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-100 font-semibold px-4 py-2.5 rounded-xl border border-zinc-700/60 transition-all duration-200 active:scale-[0.98]",
+      "ghost": "text-zinc-400 hover:text-amber-400 hover:bg-zinc-800/50 px-3 py-2 rounded-lg transition-colors"
+    },
+    "cards": {
+      "glass_dark": "bg-zinc-900/90 backdrop-blur-xl border border-zinc-800/80 rounded-2xl shadow-xl shadow-black/40 p-6 relative overflow-hidden",
+      "interactive_hover": "hover:border-amber-500/50 hover:shadow-amber-950/20 transition-all duration-300 transform hover:-translate-y-0.5"
+    },
+    "inputs": {
+      "standard": "bg-zinc-950/80 border border-zinc-800 focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 text-zinc-100 placeholder-zinc-500 rounded-xl px-4 py-2.5 text-sm transition-all outline-none"
+    },
+    "badges": {
+      "amber": "bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded-full text-xs font-semibold",
+      "emerald": "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-full text-xs font-semibold",
+      "zinc": "bg-zinc-800 text-zinc-300 border border-zinc-700 px-2.5 py-1 rounded-full text-xs font-semibold"
+    }
+  },
+  "instructions_to_main_agent": [
+    "1. Implementation stack utilizes JavaScript React (.js files in /app/frontend/src/ components). Ensure prop types and JS syntax are strictly clean.",
+    "2. Ensure data-testid attribute is placed on EVERY button, select, tab, modal, table row, input, and time slot card for reliable testing.",
+    "3. Implement local state fallback and mock backend endpoints so the CRM operates smoothly out of the box with seed data for Barbers, Clients, Appointments, Subscriptions, and Loyalty Points.",
+    "4. When a user books an appointment for a specific barber and time slot (e.g. Barber Marcos at 14:00 on May 15), that time slot MUST dynamically change status to 'Occupied/Indisponível' and prevent duplicate bookings.",
+    "5. Provide quick tabs in the main CRM header/sidebar: 'Agendamentos (Calendar)', 'Barbeiros (Team)', 'Clientes (CRM)', 'Clientes Fidelizados (Loyalty)', 'Planos de Assinatura (Subscriptions)', 'Visão Geral (Dashboard)', and 'Agendar Horário (Public Booking Area)'.",
+    "6. Include quick Portuguese language options / terms suited for Brazilian/Portuguese barbershop culture ('Corte de Cabelo', 'Barba Completa', 'Combo Corte + Barba', 'Sobrancelha', 'Plano Vip Mensal', 'Pontos de Fidelidade').",
+    "7. Ensure dark luxury look with warm gold/amber accents, non-transparent popups/dropdowns, and responsive mobile-first layouts."
+  ],
+  "testing_requirements": {
+    "data_testid_convention": "kebab-case, role and entity based",
+    "mandatory_test_ids": [
+      "nav-agendamentos-tab",
+      "nav-barbeiros-tab",
+      "nav-clientes-tab",
+      "nav-fidelizados-tab",
+      "nav-planos-tab",
+      "nav-dashboard-tab",
+      "nav-public-booking-tab",
+      "booking-barber-select",
+      "booking-service-select",
+      "booking-date-picker",
+      "booking-time-slot-10-00",
+      "booking-submit-button",
+      "new-appointment-btn",
+      "add-barber-btn",
+      "add-client-btn",
+      "add-plan-btn",
+      "loyalty-redeem-btn",
+      "theme-toggle-btn"
+    ]
+  }
+}

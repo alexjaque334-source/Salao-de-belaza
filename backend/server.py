@@ -633,6 +633,14 @@ async def create_appointment(data: AppointmentIn, user: dict = Depends(get_curre
         client_name = cust["name"]
         client_phone = cust.get("phone", "")
         client_email = cust.get("email", "")
+    elif user["role"] == "admin" and data.client_name:
+        # Walk-in: manual booking for a client without an account.
+        client_id = None
+        client_name = data.client_name.strip()
+        client_phone = (data.client_phone or "").strip()
+        client_email = ""
+    elif user["role"] == "admin":
+        raise HTTPException(400, "Informe o cliente cadastrado ou o nome do cliente avulso")
     else:
         client_id = oid(user["_id"])
         client_name = user["name"]

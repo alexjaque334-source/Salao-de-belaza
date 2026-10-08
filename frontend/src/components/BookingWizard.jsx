@@ -10,7 +10,10 @@ export function BookingWizard({ isAdmin = false, onBooked }) {
   const [clients, setClients] = useState([]);
   const [barberId, setBarberId] = useState("");
   const [serviceId, setServiceId] = useState("");
+  const [clientMode, setClientMode] = useState("registered"); // registered | walkin
   const [clientId, setClientId] = useState("");
+  const [walkinName, setWalkinName] = useState("");
+  const [walkinPhone, setWalkinPhone] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [slots, setSlots] = useState([]);
   const [time, setTime] = useState("");
@@ -42,19 +45,20 @@ export function BookingWizard({ isAdmin = false, onBooked }) {
       toast.error("Selecione barbeiro, serviço e horário.");
       return;
     }
-    if (isAdmin && !clientId) {
-      toast.error("Selecione o cliente.");
-      return;
+    let payload = { barber_id: barberId, service_id: serviceId, date, time };
+    if (isAdmin) {
+      if (clientMode === "registered") {
+        if (!clientId) { toast.error("Selecione o cliente."); return; }
+        payload.client_id = clientId;
+      } else {
+        if (!walkinName.trim()) { toast.error("Informe o nome do cliente."); return; }
+        payload.client_name = walkinName.trim();
+        payload.client_phone = walkinPhone.trim();
+      }
     }
     setSubmitting(true);
     try {
-      await api.post("/appointments", {
-        barber_id: barberId,
-        service_id: serviceId,
-        date,
-        time,
-        client_id: isAdmin ? clientId : undefined,
-      });
+      await api.post("/appointments", payload);
       toast.success(`Agendamento confirmado para ${date.split("-").reverse().join("/")} às ${time}!`);
       setTime("");
       const r = await api.get(`/availability?barber_id=${barberId}&date=${date}`);
@@ -94,7 +98,7 @@ export function BookingWizard({ isAdmin = false, onBooked }) {
             onChange={(e) => setDate(e.target.value)}
             className="w-full bg-input/60 border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-amber-500" />
         </div>
-        {isAdmin && (
+        {isAdmin && clientMode === "registered" && (
           <div>
             <label className="text-sm font-medium block mb-1.5">Cliente</label>
             <select data-testid="booking-client-select" value={clientId} onChange={(e) => setClientId(e.target.value)}
@@ -105,6 +109,37 @@ export function BookingWizard({ isAdmin = false, onBooked }) {
           </div>
         )}
       </div>
+
+      {isAdmin && (
+        <div className="space-y-3">
+          <div className="inline-flex rounded-xl border border-border bg-secondary/40 p-1" data-testid="client-mode-toggle">
+            <button type="button" data-testid="client-mode-registered" onClick={() => setClientMode("registered")}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${clientMode === "registered" ? "bg-gradient-to-r from-amber-600 to-amber-500 text-zinc-950" : "text-muted-foreground hover:text-foreground"}`}>
+              Cliente cadastrado
+            </button>
+            <button type="button" data-testid="client-mode-walkin" onClick={() => setClientMode("walkin")}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${clientMode === "walkin" ? "bg-gradient-to-r from-amber-600 to-amber-500 text-zinc-950" : "text-muted-foreground hover:text-foreground"}`}>
+              Cliente sem cadastro
+            </button>
+          </div>
+          {clientMode === "walkin" && (
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium block mb-1.5">Nome do cliente</label>
+                <input data-testid="walkin-name-input" value={walkinName} onChange={(e) => setWalkinName(e.target.value)}
+                  placeholder="Ex: João da Silva"
+                  className="w-full bg-input/60 border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-amber-500" />
+              </div>
+              <div>
+                <label className="text-sm font-medium block mb-1.5">Telefone / WhatsApp</label>
+                <input data-testid="walkin-phone-input" value={walkinPhone} onChange={(e) => setWalkinPhone(e.target.value)}
+                  placeholder="(11) 90000-0000"
+                  className="w-full bg-input/60 border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-amber-500" />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {selBarber && (
         <div className={card + " p-5"}>

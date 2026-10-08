@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Trash2, CheckCircle2, XCircle, Filter } from "lucide-react";
+import { Plus, Trash2, CheckCircle2, XCircle, Filter, MessageCircle } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
@@ -10,6 +10,16 @@ import { BookingWizard } from "@/components/BookingWizard";
 import { btnPrimary, btnGhost, card, badge, statusColors } from "@/lib/styles";
 
 const STATUSES = ["Confirmado", "Concluído", "Cancelado", "Não Compareceu"];
+
+function whatsappUrl(a) {
+  let digits = (a.client_phone || "").replace(/\D/g, "");
+  if (!digits) return null;
+  if (digits.length <= 11 && !digits.startsWith("55")) digits = "55" + digits;
+  const nome = (a.client_name || "").split(" ")[0];
+  const dataBr = a.date.split("-").reverse().join("/");
+  const msg = `Olá ${nome}! 👋 Lembrete do seu horário na BarberStudio: ${a.service_name} com ${a.barber_name} em ${dataBr} às ${a.time}. Qualquer coisa é só responder por aqui. Até lá! ✂️`;
+  return `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
+}
 
 export default function Appointments() {
   const [appts, setAppts] = useState([]);
@@ -112,6 +122,9 @@ export default function Appointments() {
                   <td className="px-5 py-3"><span className={badge(statusColors[a.status])}>{a.status}</span></td>
                   <td className="px-5 py-3">
                     <div className="flex items-center justify-end gap-1">
+                      {whatsappUrl(a) && (
+                        <a data-testid={`whatsapp-appt-${a.id}`} href={whatsappUrl(a)} target="_blank" rel="noopener noreferrer" title="Enviar lembrete no WhatsApp" className="p-2 rounded-lg text-emerald-400 hover:bg-emerald-500/10"><MessageCircle className="h-4 w-4" /></a>
+                      )}
                       {a.status !== "Concluído" && (
                         <button data-testid={`complete-appt-${a.id}`} onClick={() => setStatus(a.id, "Concluído")} title="Concluir" className="p-2 rounded-lg text-emerald-400 hover:bg-emerald-500/10"><CheckCircle2 className="h-4 w-4" /></button>
                       )}

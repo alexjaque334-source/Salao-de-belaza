@@ -7,7 +7,7 @@
       "framework": "fastapi"
     },
     "frontend": {
-      "root": "Frontend",
+      "root": "frontend",
       "framework": "vite"
     }
   },

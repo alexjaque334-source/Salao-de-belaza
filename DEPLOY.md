@@ -27,6 +27,9 @@ MongoDB. Isolamento total de dados por barbearia.
 | `MONGO_URL` | `mongodb+srv://...` | String do Atlas |
 | `DB_NAME` | `barberstudio` | Nome do banco |
 | `JWT_SECRET` | (64 hex aleatórios) | Assinatura dos tokens |
+| `ENVIRONMENT` | `production` | Em `production`, barbearias sem status são tratadas como PENDENTE (exigem aprovação). Fora disso, a DEMO01 fica ativa p/ testes. |
+| `SUPERADMIN_EMAIL` | `voce@email.com` | Login do Super Admin em `/plataforma` |
+| `SUPERADMIN_PASSWORD` | (senha forte) | Senha do Super Admin (criada 1x; não é redefinida a cada start) |
 | `ADMIN_EMAIL` | `voce@email.com` | Dono da barbearia de exemplo |
 | `ADMIN_PASSWORD` | (senha forte) | Senha do dono de exemplo |
 | `DEMO_SHOP_CODE` | `DEMO01` | Código da barbearia de exemplo |
@@ -42,8 +45,13 @@ No frontend (prefixo `REACT_APP_`): defina `REACT_APP_BACKEND_URL` como a própr
 (ex: `https://seuapp.vercel.app`), pois a API fica no mesmo domínio sob `/api`.
 
 ## Observações
+- Painel do dono da plataforma (Super Admin) em `/plataforma` (login próprio, sem código de
+  barbearia). Aprova/rejeita/suspende/reativa barbearias. Criado no 1º start a partir de
+  `SUPERADMIN_EMAIL`/`SUPERADMIN_PASSWORD` (idempotente — não redefine a senha a cada start).
+- Em produção (`ENVIRONMENT=production`), novas barbearias nascem PENDENTE ("Solicitar acesso")
+  e só liberam o CRM e o cadastro de clientes após aprovação do Super Admin.
 - Banco começa vazio; no primeiro acesso é criada a "Barbearia Exemplo" (código `DEMO01`) com
-  o dono `ADMIN_EMAIL`. Crie novas barbearias pela tela "Criar minha barbearia".
+  o dono `ADMIN_EMAIL`. Crie novas barbearias pela tela "Solicitar acesso para minha barbearia".
 - Login usa **código da barbearia + e-mail + senha** (o mesmo e-mail pode existir em barbearias
   diferentes).
 - Confirmação de e-mail é enviada na hora do agendamento; o lembrete do dia seguinte é enviado

@@ -21,12 +21,15 @@ CRM para uma barbearia com aba de agendamentos onde cada cliente agenda um horá
 - MVP single-shop (agendamentos, barbeiros, clientes, fidelidade, planos, dashboard). [jun/2026]
 - Relatório por barbeiro (receita/comissão/ticket). [jun/2026]
 - Lembretes: e-mail confirmação + lembrete (cron) e botão WhatsApp manual. [jun/2026]
-- Multi-barbearia com isolamento total + autorização cross-shop (404), login por código, criar barbearia, cadastro de cliente por código. [jun/2026]
-- Adaptação Vercel serverless + Atlas + Resend próprio via env; DEPLOY.md documentado. [jun/2026]
-- Testado: 20/20 testes de isolamento/autorização + fluxos de Ui (iteration_2.json).
+- Multi-barbearia com isolamento total + autorização cross-shop (404), login por código. [jun/2026]
+- Adaptação Vercel serverless + Atlas + Resend próprio via env; DEPLOY.md. [jun/2026]
+- Fase 2 Super Admin: painel /plataforma (login próprio), "Solicitar acesso" com CPF/CNPJ
+  validado e único, status pending/active/suspended/rejected, gating de ponta a ponta,
+  separação de papéis (CRM x plataforma -> 403 cruzado), histórico de decisões, rate limit,
+  CPF mascarado em listagens, super admin idempotente. Testado 20/20 (iteration_3.json). [jun/2026]
 
 ## Backlog / Next
-- P1: Reaproveitamento de conexão Mongo para serverless (cold start, limites).
-- P1: Página pública de agendamento por barbearia (slug), sem login.
-- P2: Domínio próprio, páginas de erro, logs.
-- P2: Lembrete WhatsApp automático (Twilio); resposta a response_models explícitos.
+- P1 (Fase 2 do plano): Planos de assinatura da plataforma + cobrança recorrente (provedor a definir).
+- P1: E-mails de aprovação/suspensão para o responsável da barbearia.
+- P2: Relatórios da plataforma (crescimento, receita por barbearia, churn); comunicados.
+- P2: Reaproveitamento de conexão Mongo p/ serverless; split de server.py em routers.

@@ -1,0 +1,47 @@
+{
+  "summary": "Smoke-tested barbershop CRM backend + frontend. Admin login, seed data (3 barbers, 5 services, 3 plans), client self-register, availability, booking with 409 duplicate protection, PATCH status to Concluído awarding points/revenue/top_barber, loyalty set + admin redeem, subscriptions, dashboard stats all working. Frontend admin login routes to /dashboard; Novo Agendamento dialog loads availability and greys out the previously-booked 10:00 slot (disabled + line-through), confirming the core unavailability requirement end-to-end.",
+  "tested_scope": ["backend", "frontend", "auth", "integration"],
+  "passed": [
+    "POST /api/auth/login admin -> token + role=admin",
+    "POST /api/auth/register creates client and returns JWT",
+    "GET /api/barbers=3, /api/services=5, /api/plans=3 (seed OK)",
+    "GET /api/availability returns 20 slots for Marcos on 2026-10-12",
+    "POST /api/appointments by client creates booking (status Confirmado)",
+    "Duplicate POST /api/appointments same barber+date+time -> HTTP 409 'Este horário já está indisponível'",
+    "Client GET /api/appointments shows own (1); Admin shows all (1)",
+    "PATCH /api/appointments/{id}/status -> Concluído sets revenue_total=45, revenue_month=45, top_barber=Marcos Silva",
+    "PATCH /api/clients/{id}/loyalty body {points:150} works (admin)",
+    "POST /api/clients/{id}/redeem (admin) returns ok with reward message",
+    "POST /api/subscriptions by client creates Ativo subscription; admin list shows it",
+    "GET /api/dashboard/stats returns counts, series (7-day), top_barber, upcoming",
+    "Frontend: admin login -> /dashboard (toast 'Bem-vindo de volta'), KPIs render, revenue chart renders",
+    "Frontend: BookingWizard renders native selects for barber (3 options)/service, loads availability on date pick; 10:00 slot (booked via API) rendered disabled with line-through, 19 other slots enabled -> integration confirmed"
+  ],
+  "failed": [
+    {
+      "area": "spec vs code (minor)",
+      "issue": "Sidebar nav items don't carry 'nav-appointments-tab' / 'nav-*-tab' data-testids promised in test spec; navigation only works via visible Portuguese labels",
+      "evidence": "grep of src found no matching data-testids; Playwright click on [data-testid=nav-appointments-tab] timed out, text click worked",
+      "priority": "LOW"
+    },
+    {
+      "area": "appointment update endpoint",
+      "issue": "Only PATCH /api/appointments/{id}/status is implemented; the spec also mentioned PUT. Not a bug but worth confirming spec",
+      "evidence": "PUT /api/appointments/{id} -> 405 Method Not Allowed; PATCH .../status works",
+      "priority": "LOW"
+    },
+    {
+      "area": "GET /api/clients/{id}",
+      "issue": "Single-client fetch returns 405 Method Not Allowed (no GET-by-id route); admin UI appears to use list endpoint so not blocking",
+      "evidence": "curl GET /api/clients/{id} -> {\"detail\":\"Method Not Allowed\"}",
+      "priority": "LOW"
+    }
+  ],
+  "action_items": [
+    "(Optional) Add data-testid='nav-appointments-tab' etc. on sidebar links to match spec and simplify E2E selectors",
+    "(Optional) Add GET /api/clients/{id} if any client detail page needs it, or document that list is the source of truth"
+  ],
+  "success_rate": {"backend": "100% on core flows (12/12 critical checks)", "frontend": "100% on core flow (login + booking slot unavailability)"},
+  "retest_needed": false,
+  "full_testing_deferred": true
+}

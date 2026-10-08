@@ -5,6 +5,7 @@ import {
   LogOut, CalendarPlus, History, Sparkles, Menu, X, BarChart3,
 } from "lucide-react";
 import { useState } from "react";
+import { ShopStatusScreen } from "@/components/ShopStatusScreen";
 
 const adminNav = [
   { to: "/dashboard", label: "Visão Geral", icon: LayoutDashboard, testid: "nav-dashboard-tab" },
@@ -28,6 +29,10 @@ export function Shell() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const nav = user.role === "admin" ? adminNav : clientNav;
+
+  if (user.shop_status && user.shop_status !== "active") {
+    return <ShopStatusScreen status={user.shop_status} shopName={user.shop_name} shopCode={user.shop_code} />;
+  }
 
   const doLogout = () => {
     logout();

@@ -16,6 +16,8 @@ import Booking from "@/pages/client/Booking";
 import MyAppointments from "@/pages/client/MyAppointments";
 import ClientPlans from "@/pages/client/ClientPlans";
 import ClientLoyalty from "@/pages/client/ClientLoyalty";
+import PlatformLogin from "@/pages/platform/PlatformLogin";
+import PlatformDashboard from "@/pages/platform/PlatformDashboard";
 
 function Protected({ children, role }) {
   const { user, ready } = useAuth();
@@ -45,6 +47,8 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<RootRedirect />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/plataforma" element={<PlatformLogin />} />
+      <Route path="/plataforma/painel" element={<PlatformDashboard />} />
 
       <Route element={<Protected role="admin"><Shell /></Protected>}>
         <Route path="/dashboard" element={<Dashboard />} />

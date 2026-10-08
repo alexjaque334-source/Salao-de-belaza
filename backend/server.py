@@ -14,6 +14,7 @@ from bson import ObjectId
 import bcrypt
 import jwt
 import hmac
+import re
 import email_service
 
 ROOT_DIR = Path(__file__).parent
@@ -25,6 +26,8 @@ db = client[os.environ['DB_NAME']]
 
 JWT_SECRET = os.environ['JWT_SECRET']
 JWT_ALGORITHM = "HS256"
+ENVIRONMENT = os.environ.get("ENVIRONMENT", "preview").lower()
+IS_PRODUCTION = ENVIRONMENT == "production"
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -89,6 +92,7 @@ async def _shop_fields(user: dict) -> dict:
     return {
         "shop_code": shop["code"] if shop else None,
         "shop_name": shop["name"] if shop else None,
+        "shop_status": shop_status(shop) if shop else None,
     }
 
 
@@ -99,7 +103,96 @@ async def auth_response(user: dict) -> dict:
     return {"token": token, "user": u}
 
 
-async def get_current_user(request: Request) -> dict:
+def shop_status(shop) -> str:
+    st = shop.get("status")
+    if st:
+        return st
+    # Legacy/no explicit status: pending in production, active otherwise (tests/preview).
+    return "pending" if IS_PRODUCTION else "active"
+
+
+def _only_digits(s: str) -> str:
+    return re.sub(r"\D", "", s or "")
+
+
+def valid_cpf(cpf: str) -> bool:
+    cpf = _only_digits(cpf)
+    if len(cpf) != 11 or cpf == cpf[0] * 11:
+        return False
+    for i in (9, 10):
+        s = sum(int(cpf[n]) * ((i + 1) - n) for n in range(i))
+        d = ((s * 10) % 11) % 10
+        if d != int(cpf[i]):
+            return False
+    return True
+
+
+def valid_cnpj(cnpj: str) -> bool:
+    cnpj = _only_digits(cnpj)
+    if len(cnpj) != 14 or cnpj == cnpj[0] * 14:
+        return False
+    w1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+    w2 = [6] + w1
+    for w, i in ((w1, 12), (w2, 13)):
+        s = sum(int(cnpj[n]) * w[n] for n in range(i))
+        d = s % 11
+        d = 0 if d < 2 else 11 - d
+        if d != int(cnpj[i]):
+            return False
+    return True
+
+
+def valid_cpf_cnpj(v: str) -> bool:
+    d = _only_digits(v)
+    if len(d) == 11:
+        return valid_cpf(d)
+    if len(d) == 14:
+        return valid_cnpj(d)
+    return False
+
+
+def mask_doc(v: str) -> str:
+    d = _only_digits(v)
+    if len(d) == 11:
+        return f"***.***.{d[6:9]}-**"
+    if len(d) == 14:
+        return f"**.***.***/{d[8:12]}-**"
+    return "***"
+
+
+async def rate_limit(identifier: str, max_attempts: int = 10, window_minutes: int = 15):
+    now = datetime.now(timezone.utc)
+    rec = await db.login_attempts.find_one({"_id": identifier})
+    if rec:
+        first = datetime.fromisoformat(rec["first"])
+        if (now - first).total_seconds() < window_minutes * 60:
+            if rec.get("count", 0) >= max_attempts:
+                raise HTTPException(status_code=429, detail="Muitas tentativas. Tente novamente em alguns minutos.")
+        else:
+            await db.login_attempts.delete_one({"_id": identifier})
+
+
+async def bump_attempt(identifier: str):
+    rec = await db.login_attempts.find_one({"_id": identifier})
+    if not rec:
+        await db.login_attempts.insert_one({"_id": identifier, "count": 1,
+                                            "first": datetime.now(timezone.utc).isoformat()})
+    else:
+        await db.login_attempts.update_one({"_id": identifier}, {"$inc": {"count": 1}})
+
+
+async def clear_attempts(identifier: str):
+    await db.login_attempts.delete_one({"_id": identifier})
+
+
+def client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for", "")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _decode_token(request: Request) -> dict:
     token = None
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
@@ -109,23 +202,56 @@ async def get_current_user(request: Request) -> dict:
     if not token:
         raise HTTPException(status_code=401, detail="Não autenticado")
     try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        user = await db.users.find_one({"_id": ObjectId(payload["sub"])})
-        if not user:
-            raise HTTPException(status_code=401, detail="Usuário não encontrado")
-        if not user.get("shop_id"):
-            raise HTTPException(status_code=401, detail="Conta sem barbearia")
-        return user
+        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Sessão expirada")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Token inválido")
 
 
+async def get_current_user_raw(request: Request) -> dict:
+    payload = _decode_token(request)
+    if payload.get("kind") == "super_admin":
+        raise HTTPException(status_code=403, detail="Use o painel da plataforma")
+    user = await db.users.find_one({"_id": ObjectId(payload["sub"])})
+    if not user:
+        raise HTTPException(status_code=401, detail="Usuário não encontrado")
+    if not user.get("shop_id"):
+        raise HTTPException(status_code=401, detail="Conta sem barbearia")
+    return user
+
+
+async def get_current_user(request: Request) -> dict:
+    user = await get_current_user_raw(request)
+    shop = await db.shops.find_one({"_id": ObjectId(user["shop_id"])})
+    if not shop:
+        raise HTTPException(status_code=401, detail="Barbearia não encontrada")
+    st = shop_status(shop)
+    if st != "active":
+        raise HTTPException(status_code=403, detail=f"shop_{st}")
+    return user
+
+
 async def require_admin(user: dict = Depends(get_current_user)) -> dict:
     if user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Acesso restrito ao administrador")
     return user
+
+
+def create_platform_token(admin_id: str, email: str) -> str:
+    payload = {"sub": admin_id, "email": email, "kind": "super_admin",
+               "exp": datetime.now(timezone.utc) + timedelta(days=2), "type": "access"}
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+async def get_super_admin(request: Request) -> dict:
+    payload = _decode_token(request)
+    if payload.get("kind") != "super_admin":
+        raise HTTPException(status_code=403, detail="Acesso restrito à plataforma")
+    admin = await db.platform_admins.find_one({"_id": ObjectId(payload["sub"])})
+    if not admin:
+        raise HTTPException(status_code=401, detail="Super admin não encontrado")
+    return admin
 
 
 def gen_shop_code() -> str:
@@ -147,6 +273,16 @@ class ShopCreateIn(BaseModel):
     email: EmailStr
     password: str
     phone: Optional[str] = ""
+    cpf_cnpj: str
+
+
+class PlatformLoginIn(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class DecisionIn(BaseModel):
+    reason: Optional[str] = ""
 
 
 class RegisterIn(BaseModel):
@@ -275,11 +411,23 @@ async def seed_shop_defaults(shop_id: str, with_barbers: bool = False):
 
 
 # ---------------- Auth routes ----------------
-@api_router.post("/auth/shop")
-async def create_shop(data: ShopCreateIn):
+@api_router.post("/auth/request-access")
+async def request_access(data: ShopCreateIn, request: Request):
+    await rate_limit(f"req:{client_ip(request)}", max_attempts=8, window_minutes=30)
+    if not valid_cpf_cnpj(data.cpf_cnpj):
+        await bump_attempt(f"req:{client_ip(request)}")
+        raise HTTPException(status_code=400, detail="CPF/CNPJ inválido")
+    doc_digits = _only_digits(data.cpf_cnpj)
+    if await db.shops.find_one({"cpf_cnpj": doc_digits}):
+        raise HTTPException(status_code=400, detail="Já existe uma barbearia com este CPF/CNPJ")
     code = await unique_shop_code()
-    shop_doc = {"name": data.shop_name.strip(), "code": code,
-                "created_at": datetime.now(timezone.utc).isoformat()}
+    shop_doc = {
+        "name": data.shop_name.strip(), "code": code, "status": "pending",
+        "responsible_name": data.name, "cpf_cnpj": doc_digits,
+        "phone": data.phone, "email": data.email.lower(),
+        "decision_history": [],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
     shop_res = await db.shops.insert_one(shop_doc)
     shop_id = oid(shop_res.inserted_id)
     email = data.email.lower()
@@ -289,19 +437,22 @@ async def create_shop(data: ShopCreateIn):
         "points": 0, "total_spend": 0, "preferred_barber": "", "notes": "",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    res = await db.users.insert_one(admin)
-    admin["_id"] = res.inserted_id
+    await db.users.insert_one(admin)
     await seed_shop_defaults(shop_id)
-    resp = await auth_response(admin)
-    resp["shop_code"] = code
-    return resp
+    return {
+        "status": "pending", "shop_code": code,
+        "message": "Cadastro em análise — aguardando aprovação do administrador da plataforma.",
+    }
 
 
 @api_router.post("/auth/register")
-async def register(data: RegisterIn):
+async def register(data: RegisterIn, request: Request):
+    await rate_limit(f"reg:{client_ip(request)}", max_attempts=15, window_minutes=30)
     shop = await db.shops.find_one({"code": data.shop_code.strip().upper()})
     if not shop:
         raise HTTPException(status_code=404, detail="Barbearia não encontrada. Verifique o código.")
+    if shop_status(shop) != "active":
+        raise HTTPException(status_code=403, detail="Esta barbearia ainda não está ativa.")
     shop_id = oid(shop["_id"])
     email = data.email.lower()
     if await db.users.find_one({"shop_id": shop_id, "email": email}):
@@ -318,19 +469,24 @@ async def register(data: RegisterIn):
 
 
 @api_router.post("/auth/login")
-async def login(data: LoginIn):
+async def login(data: LoginIn, request: Request):
+    ident = f"login:{client_ip(request)}:{data.shop_code.strip().upper()}:{data.email.lower()}"
+    await rate_limit(ident)
     shop = await db.shops.find_one({"code": data.shop_code.strip().upper()})
-    if not shop:
-        raise HTTPException(status_code=401, detail="Barbearia, e-mail ou senha inválidos")
     email = data.email.lower()
-    user = await db.users.find_one({"shop_id": oid(shop["_id"]), "email": email})
-    if not user or not verify_password(data.password, user["password_hash"]):
+    user = await db.users.find_one({"shop_id": oid(shop["_id"]), "email": email}) if shop else None
+    if not shop or not user or not verify_password(data.password, user["password_hash"]):
+        await bump_attempt(ident)
         raise HTTPException(status_code=401, detail="Barbearia, e-mail ou senha inválidos")
+    # Clients cannot sign in to a non-active shop; owners can (to see the status screen).
+    if user["role"] == "client" and shop_status(shop) != "active":
+        raise HTTPException(status_code=403, detail="Esta barbearia não está disponível no momento.")
+    await clear_attempts(ident)
     return await auth_response(user)
 
 
 @api_router.get("/auth/me")
-async def me(user: dict = Depends(get_current_user)):
+async def me(user: dict = Depends(get_current_user_raw)):
     u = serialize_user(user)
     u.update(await _shop_fields(user))
     return u
@@ -792,6 +948,109 @@ async def cron_reminders_get(request: Request):
     return await _run_reminders()
 
 
+# ---------------- Platform (Super Admin) ----------------
+def _shop_admin_summary(shop: dict, full: bool = False) -> dict:
+    return {
+        "id": oid(shop["_id"]),
+        "name": shop.get("name"),
+        "code": shop.get("code"),
+        "status": shop_status(shop),
+        "responsible_name": shop.get("responsible_name", ""),
+        "email": shop.get("email", ""),
+        "phone": shop.get("phone", ""),
+        "cpf_cnpj": shop.get("cpf_cnpj", "") if full else mask_doc(shop.get("cpf_cnpj", "")),
+        "decision_history": shop.get("decision_history", []),
+        "created_at": shop.get("created_at"),
+    }
+
+
+@api_router.post("/platform/login")
+async def platform_login(data: PlatformLoginIn, request: Request):
+    ident = f"plogin:{client_ip(request)}:{data.email.lower()}"
+    await rate_limit(ident, max_attempts=6, window_minutes=15)
+    admin = await db.platform_admins.find_one({"email": data.email.lower()})
+    if not admin or not verify_password(data.password, admin["password_hash"]):
+        await bump_attempt(ident)
+        raise HTTPException(status_code=401, detail="E-mail ou senha inválidos")
+    await clear_attempts(ident)
+    token = create_platform_token(oid(admin["_id"]), admin["email"])
+    return {"token": token, "admin": {"email": admin["email"], "name": admin.get("name", "Super Admin")}}
+
+
+@api_router.get("/platform/me")
+async def platform_me(admin: dict = Depends(get_super_admin)):
+    return {"email": admin["email"], "name": admin.get("name", "Super Admin")}
+
+
+@api_router.get("/platform/stats")
+async def platform_stats(_: dict = Depends(get_super_admin)):
+    out = {"active": 0, "pending": 0, "suspended": 0, "rejected": 0, "total": 0}
+    for shop in await db.shops.find().to_list(5000):
+        out[shop_status(shop)] = out.get(shop_status(shop), 0) + 1
+        out["total"] += 1
+    return out
+
+
+@api_router.get("/platform/shops")
+async def platform_list_shops(status: Optional[str] = None, q: Optional[str] = None,
+                              _: dict = Depends(get_super_admin)):
+    shops = await db.shops.find().sort("created_at", -1).to_list(5000)
+    out = []
+    for s in shops:
+        if status and shop_status(s) != status:
+            continue
+        if q:
+            hay = f"{s.get('name','')} {s.get('responsible_name','')} {s.get('email','')} {s.get('code','')}".lower()
+            if q.lower() not in hay:
+                continue
+        out.append(_shop_admin_summary(s))
+    return out
+
+
+@api_router.get("/platform/shops/{shop_id}")
+async def platform_shop_detail(shop_id: str, _: dict = Depends(get_super_admin)):
+    s = await db.shops.find_one({"_id": ObjectId(shop_id)})
+    if not s:
+        raise HTTPException(404, "Barbearia não encontrada")
+    return _shop_admin_summary(s, full=True)
+
+
+async def _decide(shop_id: str, new_status: str, action: str, admin: dict, reason: str):
+    s = await db.shops.find_one({"_id": ObjectId(shop_id)})
+    if not s:
+        raise HTTPException(404, "Barbearia não encontrada")
+    entry = {
+        "action": action, "by": admin["email"],
+        "at": datetime.now(timezone.utc).isoformat(), "reason": (reason or "").strip(),
+    }
+    await db.shops.update_one(
+        {"_id": ObjectId(shop_id)},
+        {"$set": {"status": new_status}, "$push": {"decision_history": entry}},
+    )
+    s = await db.shops.find_one({"_id": ObjectId(shop_id)})
+    return _shop_admin_summary(s, full=True)
+
+
+@api_router.post("/platform/shops/{shop_id}/approve")
+async def platform_approve(shop_id: str, data: DecisionIn, admin: dict = Depends(get_super_admin)):
+    return await _decide(shop_id, "active", "aprovou", admin, data.reason)
+
+
+@api_router.post("/platform/shops/{shop_id}/reject")
+async def platform_reject(shop_id: str, data: DecisionIn, admin: dict = Depends(get_super_admin)):
+    return await _decide(shop_id, "rejected", "rejeitou", admin, data.reason)
+
+
+@api_router.post("/platform/shops/{shop_id}/suspend")
+async def platform_suspend(shop_id: str, data: DecisionIn, admin: dict = Depends(get_super_admin)):
+    return await _decide(shop_id, "suspended", "suspendeu", admin, data.reason)
+
+
+@api_router.post("/platform/shops/{shop_id}/reactivate")
+async def platform_reactivate(shop_id: str, data: DecisionIn, admin: dict = Depends(get_super_admin)):
+    return await _decide(shop_id, "active", "reativou", admin, data.reason)
+
+
 app.include_router(api_router)
 
 app.add_middleware(
@@ -823,17 +1082,34 @@ async def seed():
     except Exception as e:
         logger.warning(f"Index setup: {e}")
 
+    # Super Admin (platform owner), idempotent: created only once, never reset here.
+    sa_email = os.environ.get("SUPERADMIN_EMAIL", "").lower()
+    sa_password = os.environ.get("SUPERADMIN_PASSWORD", "")
+    if sa_email and sa_password:
+        if not await db.platform_admins.find_one({"email": sa_email}):
+            await db.platform_admins.insert_one({
+                "email": sa_email, "password_hash": hash_password(sa_password),
+                "name": "Super Admin", "role": "super_admin",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+
     # Example barbershop (owner = ADMIN_EMAIL) so the app is usable on a fresh database.
     demo_code = os.environ.get("DEMO_SHOP_CODE", "DEMO01").upper()
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@example.com").lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
+    # DEMO is active only outside production, so prod requires real approval flow.
+    demo_status = "pending" if IS_PRODUCTION else "active"
     shop = await db.shops.find_one({"code": demo_code})
     if not shop:
         res = await db.shops.insert_one({
-            "name": "Barbearia Exemplo", "code": demo_code,
+            "name": "Barbearia Exemplo", "code": demo_code, "status": demo_status,
+            "responsible_name": "Administrador", "cpf_cnpj": "", "phone": "",
+            "email": admin_email, "decision_history": [],
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
         shop = {"_id": res.inserted_id, "code": demo_code, "name": "Barbearia Exemplo"}
+    elif not shop.get("status"):
+        await db.shops.update_one({"_id": shop["_id"]}, {"$set": {"status": demo_status}})
     shop_id = oid(shop["_id"])
     existing = await db.users.find_one({"shop_id": shop_id, "email": admin_email})
     if not existing:

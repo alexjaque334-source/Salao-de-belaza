@@ -1,148 +1,153 @@
-# Hospedagem do BarberStudio na Vercel + Atlas + Multi-barbearia
+# Fase 2 — Administração da Plataforma (Super Admin)
 
-Publicar o BarberStudio na Vercel usando o código do GitHub, com banco no MongoDB Atlas M0
-(novo e vazio), e-mail por conta própria (Resend) e isolamento completo entre barbearias.
+Painel de proprietário da plataforma para controlar quais barbearias podem usar o CRM, com
+cadastro por aprovação e gestão de status (pendente, ativa, suspensa, rejeitada).
+Mantém intacto todo o CRM atual e o isolamento de dados entre barbearias.
 
 ## Para quem é
-Para o dono do projeto, que quer o app no ar na Vercel e, agora, poder operar/testar
-**várias barbearias no mesmo sistema** com total separação de dados entre elas.
+- Para você, dono da plataforma (Super Admin): aprova, rejeita, suspende e reativa barbearias,
+  e acompanha quantas estão ativas, pendentes e suspensas.
+- Para o responsável pela barbearia: solicita acesso e só entra no CRM após aprovação.
+- Para o cliente final: continua se cadastrando pelo código da barbearia, sem aprovação, e
+  apenas em barbearias ativas.
 
-## Respostas às perguntas iniciais (mantidas)
-- O MongoDB do preview é interno e **não** é acessível pela Vercel; **não** há URL pública dele.
-- O caminho correto é um **MongoDB Atlas M0 gratuito**, que fornece string de conexão pública e segura.
+## Funcionalidades e experiência
 
-## Diagnóstico de isolamento (estado atual)
-Hoje o sistema é de **barbearia única**: todas as listagens (barbeiros, serviços, clientes,
-agendamentos, planos, dashboard e relatórios) retornam todos os registros de forma global, e
-qualquer conta admin enxerga e gerencia tudo. **Não há separação por barbearia.** Será criado
-o conceito de "Barbearia" e todos os dados e consultas passarão a ser separados por barbearia.
+### 1. Solicitação de acesso da barbearia (substitui "Criar minha barbearia")
+- O botão passa a ser "Solicitar acesso para minha barbearia".
+- Formulário pede: nome da barbearia, nome do responsável, CPF ou CNPJ, telefone, e-mail e senha.
+- CPF/CNPJ é validado (formato e dígitos verificadores) e precisa ser único entre as barbearias.
+- A barbearia nasce com status PENDENTE. O responsável vê uma tela "Cadastro em análise —
+  aguardando aprovação" e não acessa nenhuma função administrativa do CRM enquanto não for aprovado.
+- Ao solicitar, o sistema não entrega o código da barbearia ainda; o código passa a valer
+  (para cadastro de clientes) somente quando a barbearia for aprovada/ativada.
 
-## O que será construído (experiência)
-### App no ar na Vercel
-- Site React publicado em um endereço da Vercel; API FastAPI no mesmo domínio, sob `/api`,
-  como função serverless.
-- Banco no Atlas M0 (começa vazio; cadastro inicial recriado para a barbearia de exemplo).
+### 2. Painel exclusivo do Super Admin (separado do CRM)
+- Acesso por endereço próprio e oculto (ex.: `/plataforma`), com login independente do CRM
+  (não usa código de barbearia).
+- Lista todas as barbearias com status, responsável, contato, CPF/CNPJ (protegido/mascarado na
+  listagem) e data de cadastro; com filtros por status e busca.
+- Fila de solicitações pendentes com ações Aprovar e Rejeitar.
+- Ações de Suspender e Reativar barbearias já existentes.
+- Ao rejeitar ou suspender, há um campo de motivo (opcional) guardado no histórico, junto de
+  quem fez a ação e quando.
+- Indicadores no topo: total de barbearias ativas, pendentes, suspensas e rejeitadas.
+- Espaço preparado para, no futuro, gerir planos de assinatura e pagamentos (apenas a área;
+  a cobrança em si fica para fase posterior).
 
-### Isolamento multi-barbearia (novo)
-- Cada **barbearia** tem nome e um **código/identificador único**.
-- Cada barbearia tem seu(s) **admin(s)/dono** e seus próprios barbeiros, serviços, clientes,
-  agendamentos, planos, assinaturas, fidelidade e relatórios — nada é compartilhado.
-- Um admin só vê e gerencia a **própria** barbearia. Dashboard, relatórios e comissões são
-  calculados apenas sobre os dados da barbearia dele.
-- **Criar barbearia**: na tela de acesso haverá a opção "Criar minha barbearia", que cria a
-  barbearia e a primeira conta de dono.
-- **Cadastro de cliente**: o cliente informa em qual barbearia quer se cadastrar (por código
-  da barbearia) e passa a pertencer a ela; só vê e agenda naquela barbearia.
-- **E-mail repetível entre barbearias**: o mesmo e-mail pode existir em barbearias diferentes,
-  com cadastros e dados totalmente separados. O e-mail é único **dentro** de cada barbearia,
-  não globalmente.
-- A verificação de horário indisponível e a disponibilidade dos barbeiros passam a considerar
-  a barbearia, evitando qualquer cruzamento de agenda entre barbearias diferentes.
+### 3. Efeito do status no acesso
+- PENDENTE ou REJEITADA: responsável vê a tela de aviso; CRM bloqueado. Clientes não conseguem
+  se cadastrar nem agendar.
+- ATIVA: CRM liberado para o responsável e sua equipe; clientes podem se cadastrar e agendar.
+- SUSPENSA: responsável vê aviso de suspensão; CRM bloqueado; clientes bloqueados. Os dados são
+  preservados e voltam ao normal na reativação.
 
-### Login que identifica a barbearia (ajuste aprovado)
-- Como o e-mail pode se repetir, o login passa a usar **código da barbearia + e-mail + senha**.
-  O cliente/admin informa a barbearia no login (pelo código), e o sistema autentica dentro
-  daquela barbearia. Assim, o mesmo e-mail em barbearias diferentes é resolvido corretamente.
+### 4. Segurança (reforços desta fase)
+- Papel de Super Admin é separado dos administradores de barbearia e não pertence a nenhuma
+  barbearia.
+- A conta de Super Admin tem senha armazenada com hash seguro; não é recriada nem tem a senha
+  redefinida a cada inicialização (criada apenas se ainda não existir).
+- Em produção, nenhuma barbearia é ativada automaticamente por ausência de status: cadastros sem
+  status explícito são tratados como pendentes e exigem aprovação do Super Admin. A DEMO01 segue
+  ativa somente no ambiente de testes.
+- Somente o Super Admin aprova, rejeita, suspende ou reativa; todas as rotas administrativas são
+  protegidas por autorização no backend (não apenas escondidas na interface).
+- Ninguém pode se autopromover a Super Admin nem a admin de outra barbearia; mudança de papel
+  por conta própria é bloqueada.
+- Barbearias pendentes, rejeitadas ou suspensas não acessam recursos protegidos, mesmo chamando
+  a API diretamente.
+- Limitação de tentativas de login e de solicitações de cadastro (proteção contra abuso/força bruta).
+- Registro de auditoria das decisões (aprovou/rejeitou/suspendeu/reativou): quem, quando e motivo.
+- Dados pessoais (CPF/CNPJ, telefone, e-mail) protegidos: nunca retornados em telas públicas,
+  mascarados em listagens e acessíveis por completo apenas ao Super Admin quando necessário.
+- Testes automatizados cobrindo: hash e não-redefinição da senha do Super Admin a cada start;
+  tratamento de barbearias sem status como pendentes em produção; proteção de todas as rotas
+  administrativas; e bloqueio de autopromoção de papel.
 
-### E-mail por conta própria (Resend)
-- O envio deixa de usar a integração gerenciada da Emergent e passa a usar a **sua conta
-  Resend**, lendo a chave e o remetente de **variáveis de ambiente** (nada no código/chat).
-- E-mail de **confirmação** enviado na hora do agendamento (sem tarefa em segundo plano,
-  por limitação do serverless).
-- **Lembrete** do dia seguinte disparado pelo agendador da própria Vercel (Vercel Cron).
+### 5. Cadastro de clientes (mantido)
+- Continua separado do cadastro de barbearias e sem aprovação.
+- Cliente informa o código da barbearia para se vincular; só consegue em barbearia ativa.
+- Isolamento de dados entre barbearias preservado.
 
-### WhatsApp
-- O botão "Enviar no WhatsApp" (lembrete manual) é preservado, sem custo e sem integração paga.
+### 6. Preservação do sistema
+- Nada do que existe é removido: agendamentos, clientes, barbeiros, planos, fidelidade,
+  relatórios, comissões, WhatsApp e e-mails seguem funcionando.
+- Compatibilidade com MongoDB Atlas e Vercel mantida.
 
 ## Fluxo de uso
-### Dono/admin
-1. "Criar minha barbearia" → define nome e dados; recebe o código da barbearia e a conta de dono.
-2. Login com código da barbearia + e-mail + senha.
-3. Cadastra barbeiros (com horários e comissão), serviços e planos da sua barbearia.
-4. Acompanha agenda, clientes, fidelidade, dashboard e relatórios — tudo só da sua barbearia.
+
+### Responsável pela barbearia
+1. Acessa a tela de entrada → "Solicitar acesso para minha barbearia".
+2. Preenche os dados (incl. CPF/CNPJ) e envia → recebe a mensagem de "aguardando aprovação".
+3. Enquanto PENDENTE, ao logar vê apenas o aviso; sem CRM.
+4. Após aprovação, ao logar entra no CRM normalmente e passa a usar o código para seus clientes.
+
+### Super Admin (você)
+1. Acessa `/plataforma` e faz login próprio.
+2. Vê os indicadores e a fila de pendentes.
+3. Aprova (barbearia vira ativa e o código passa a valer) ou rejeita (com motivo opcional).
+4. Suspende ou reativa barbearias já existentes quando necessário; tudo fica registrado no histórico.
 
 ### Cliente
-1. Cadastra-se informando o código da barbearia desejada (mesmo e-mail pode ser usado em
-   outra barbearia, como cadastro separado).
-2. Login com código da barbearia + e-mail + senha.
-3. Escolhe barbeiro, serviço, data e horário; o horário marcado fica indisponível.
-4. Recebe e-mail de confirmação e, no dia anterior, o lembrete.
-
-## Publicação (fluxo do dono, feito por você depois)
-1. Criar cluster Atlas M0, usuário de banco e liberar o acesso de rede; copiar a string.
-2. Conectar o repositório do GitHub à Vercel.
-3. Cadastrar as variáveis de ambiente na Vercel (incluindo a string do Atlas e a chave Resend),
-   todas como segredos.
-4. Publicar. A Vercel compila o site e sobe a API como função serverless.
-
-## Pontos que merecem sua atenção
-1. **Tamanho da mudança.** O isolamento multi-barbearia altera praticamente todo o backend e
-   os fluxos de cadastro/login. É a maior parte deste trabalho — maior que a adaptação à Vercel.
-2. **Login por barbearia.** Passa a ser necessário informar o código da barbearia ao entrar
-   (além de e-mail e senha), consequência de permitir e-mail repetido entre barbearias.
-3. **Plano da Vercel.** O gratuito (Hobby) é para uso não comercial; para operação real de um
-   CRM de barbearia o adequado é o Pro. Dá para testar no gratuito.
-4. **Resend.** Você precisa criar a conta Resend e verificar um remetente/domínio; a chave e o
-   e-mail remetente ficam em variáveis de ambiente na Vercel (não no código).
-5. **Comportamento em serverless.** Confirmação enviada na hora (pequena espera a mais) e
-   lembrete uma vez ao dia pelo agendador da Vercel (no plano gratuito, no máximo diário).
-6. **vercel.json e caminhos.** O build do frontend sai na pasta `build/`; o `vercel.json`
-   servirá esse conteúdo estático e direcionará `/api` para a função FastAPI, com retorno ao
-   `index.html` para as rotas internas do site (SPA).
+1. Cadastra-se informando o código de uma barbearia ativa.
+2. Agenda, acumula fidelidade e recebe e-mails/WhatsApp — sem mudança em relação a hoje.
 
 ## Sensação de uso (UI/UX)
-Mesmo tema escuro com dourado e as mesmas telas. Acrescenta-se: tela "Criar minha barbearia",
-o campo de código da barbearia no cadastro e no login, e a identificação da barbearia atual no
-painel. Nada mais muda visualmente.
+- Mesmo tema escuro com dourado do CRM atual.
+- Tela de solicitação mais completa (com CPF/CNPJ) e a tela de "aguardando aprovação" com visual
+  claro e tranquilizador.
+- Painel do Super Admin com identidade própria (cabeçalho "Administração da Plataforma"),
+  cartões de indicadores no topo, tabela de barbearias com selos de status coloridos
+  (pendente/ativa/suspensa/rejeitada) e ações diretas por linha, além de um painel lateral com
+  o histórico de decisões.
 
 ## Fases de implementação
 
 ### Fase 1 — MVP (feito agora)
-- Criar o conceito de Barbearia e separar **todos** os dados e consultas por barbearia
-  (barbeiros, serviços, clientes, agendamentos, planos, assinaturas, fidelidade, dashboard,
-  relatórios, disponibilidade e verificação de horário).
-- E-mail repetível entre barbearias (único por barbearia) e **login por código da barbearia +
-  e-mail + senha**, identificando corretamente a barbearia.
-- Fluxos de "Criar barbearia" (dono) e cadastro de cliente por código da barbearia; cada
-  admin restrito à própria barbearia.
-- Adaptar o backend para rodar como função serverless na Vercel e apontar para o Atlas M0
-  (banco novo e vazio; barbearia de exemplo recriada no primeiro uso).
-- Trocar o e-mail para a conta própria (Resend) via variáveis de ambiente; confirmação na
-  hora do agendamento; lembrete diário pelo agendador da Vercel.
-- Adicionar o `vercel.json` e os ajustes de caminho (frontend em `build/`, API sob `/api`).
-- Preservar login, dashboard, clientes, barbeiros, agendamentos, planos, fidelidade,
-  relatórios, comissões e o botão de WhatsApp.
-- **Testes de isolamento e autorização entre barbearias (obrigatório nesta fase):** verificar,
-  inclusive acessando diretamente os endpoints da API com o token de uma barbearia, que
-  nenhum admin ou cliente consegue ler ou modificar dados de outra barbearia — listagens,
-  detalhes, edição, exclusão, disponibilidade, relatórios e dashboard. A verificação é feita
-  pelo agente de testes antes de concluir.
-- Entregar documentação das variáveis de ambiente e da lista de arquivos alterados.
+- Papel de Super Admin separado, criado no primeiro start a partir de variáveis de ambiente
+  (e-mail/senha do dono da plataforma), com rota/login próprios em `/plataforma`.
+- Cadastro de barbearia convertido em "Solicitar acesso", com CPF/CNPJ validado e único, e
+  status inicial PENDENTE; tela de "aguardando aprovação" e bloqueio do CRM fora do status ativo.
+- Painel do Super Admin: listagem com filtros/busca, fila de pendentes, aprovar/rejeitar,
+  suspender/reativar, indicadores por status e histórico de decisões (quem/quando/motivo).
+- Regras de acesso por status aplicadas de ponta a ponta (barbearia e clientes), com todas as
+  operações sensíveis protegidas no backend e impossibilidade de autopromoção de papel.
+- Senha do Super Admin com hash seguro e idempotente no start (não recria nem redefine a cada
+  inicialização); em produção, barbearias sem status são tratadas como pendentes.
+- Limitação de tentativas de login e de solicitações de cadastro.
+- Proteção de dados pessoais (mascarados em listagens; completos só para o Super Admin).
+- Preservação integral do CRM atual e do isolamento multi-barbearia.
+- Testes automatizados de permissões, aprovação, rejeição, suspensão e reativação.
 
-### Fase 2 — Ajustes e robustez
-- Afinar a reutilização de conexão com o Atlas para serverless (limites de conexão, tempos de
-  espera) e reduzir efeitos de cold start.
-- Domínio próprio, páginas de erro amigáveis e acompanhamento de logs.
+### Fase 2 — Planos de assinatura e cobrança
+- Definição de planos da plataforma (valores, ciclos) e vínculo de cada barbearia a um plano.
+- Cobrança recorrente e controle de inadimplência (suspensão automática por falta de pagamento),
+  com um provedor de pagamento a ser escolhido.
+- Avisos por e-mail de aprovação, vencimento e suspensão.
 
-### Fase 3 — Opcional
-- Página pública de agendamento por barbearia (link/slug), sem exigir login prévio.
-- Lembrete por WhatsApp 100% automático (Twilio) no lugar do link manual.
-- Caso os limites do serverless incomodem, mover o backend para um host em container
-  mantendo o site na Vercel.
+### Fase 3 — Operação e escala
+- Relatórios da plataforma (crescimento, receita por barbearia, churn).
+- Comunicados do Super Admin para as barbearias e trilha de auditoria ampliada.
+- Autoatendimento de reativação/upgrade pela própria barbearia.
 
 ## Suposições
-- Projeto único na Vercel servindo site e API no mesmo domínio.
-- **E-mail repetível entre barbearias**; a unicidade é por barbearia. O login usa **código da
-  barbearia + e-mail + senha**; cada cadastro pertence a uma barbearia.
-- Clientes se vinculam a uma barbearia pelo **código** da barbearia no cadastro.
-- A conta admin existente (alexjaque334@gmail.com) vira dona de uma barbearia de exemplo,
-  criada no primeiro uso; a senha é definida por você na Vercel (não fica no código).
-- Banco começa vazio; nenhum dado do preview é migrado.
-- E-mail de confirmação na hora do agendamento; lembrete uma vez ao dia via Vercel Cron.
-- Chave Resend e e-mail remetente ficam em variáveis de ambiente na Vercel; nenhum valor é
-  colocado no código ou exposto no chat.
-- Botão de WhatsApp permanece como link manual.
-- Nenhuma alteração será feita agora no banco atual da Emergent; o projeto **não** será
-  publicado nesta etapa.
-- As mudanças serão feitas no código do projeto; o envio ao GitHub é feito por você (ou sob
-  sua confirmação), e eu informo ao final o que mudou.
+- O acesso do Super Admin é por rota separada e oculta (`/plataforma`) com login próprio; o
+  Super Admin não pertence a nenhuma barbearia e não usa código.
+- A conta de Super Admin é criada no primeiro start via variáveis de ambiente; não há
+  autocadastro de Super Admin pela interface.
+- Barbearia PENDENTE (ou rejeitada/suspensa): o responsável vê apenas a tela de aviso, sem
+  acesso ao CRM nem mesmo em leitura.
+- CPF/CNPJ é validado (formato e dígitos) e deve ser único entre barbearias; fica visível por
+  completo apenas ao Super Admin e mascarado nas listagens.
+- Rejeitar/suspender aceita um motivo opcional, guardado no histórico com autor e data/hora.
+- O código da barbearia só passa a permitir cadastro de clientes quando a barbearia está ativa;
+  em qualquer outro status, clientes não se cadastram nem agendam.
+- A barbearia de exemplo atual (DEMO01) permanece ativa apenas no ambiente de testes.
+- Em produção, nenhuma barbearia recebe status ATIVA automaticamente por falta de status
+  definido: cadastros sem status são tratados como PENDENTE e exigem revisão/aprovação do
+  Super Admin. (No ambiente de testes, apenas a DEMO01 é tratada como ativa para não interromper
+  os testes existentes.)
+- Cobrança/pagamento de assinatura não entra agora (fica para a Fase 2); nesta fase existe apenas
+  o espaço preparado no painel.
+- Limites de tentativa (login/cadastro) usam valores padrão razoáveis definidos por nós, sem
+  necessidade de configuração pelo usuário.

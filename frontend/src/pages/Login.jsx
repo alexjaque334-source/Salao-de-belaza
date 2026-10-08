@@ -9,11 +9,11 @@ import { btnPrimary, input, overline } from "@/lib/styles";
 export default function Login() {
   const { authenticate } = useAuth();
   const navigate = useNavigate();
-  const [mode, setMode] = useState("login"); // login | register | create-shop
-  const [form, setForm] = useState({ shop_code: "", shop_name: "", name: "", email: "", password: "", phone: "" });
+  const [mode, setMode] = useState("login"); // login | register | request-access
+  const [form, setForm] = useState({ shop_code: "", shop_name: "", name: "", email: "", password: "", phone: "", cpf_cnpj: "" });
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [newShopCode, setNewShopCode] = useState(null);
+  const [pending, setPending] = useState(null); // {code, message}
 
   const upd = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
@@ -26,14 +26,13 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     try {
-      if (mode === "create-shop") {
-        const { data } = await api.post("/auth/shop", {
+      if (mode === "request-access") {
+        const { data } = await api.post("/auth/request-access", {
           shop_name: form.shop_name, name: form.name, email: form.email,
-          password: form.password, phone: form.phone,
+          password: form.password, phone: form.phone, cpf_cnpj: form.cpf_cnpj,
         });
-        setNewShopCode(data.shop_code || data.user.shop_code);
-        toast.success("Barbearia criada! Anote o código.");
-        setTimeout(() => goAfter(data), 1800);
+        setPending({ code: data.shop_code, message: data.message });
+        toast.success("Solicitação enviada!");
       } else if (mode === "register") {
         const { data } = await api.post("/auth/register", {
           shop_code: form.shop_code, name: form.name, email: form.email,
@@ -58,12 +57,12 @@ export default function Login() {
   const titles = {
     login: "Entrar na conta",
     register: "Criar conta de cliente",
-    "create-shop": "Criar minha barbearia",
+    "request-access": "Solicitar acesso para minha barbearia",
   };
   const subtitles = {
     login: "Informe o código da barbearia, e-mail e senha.",
     register: "Cadastre-se usando o código da sua barbearia.",
-    "create-shop": "Cadastre sua barbearia e a conta de dono.",
+    "request-access": "Preencha os dados; seu cadastro passará por aprovação.",
   };
 
   return (
@@ -100,23 +99,33 @@ export default function Login() {
           <h2 className="font-display text-3xl font-bold">{titles[mode]}</h2>
           <p className="text-muted-foreground mt-2 text-sm">{subtitles[mode]}</p>
 
-          {newShopCode && (
-            <div data-testid="new-shop-code" className="mt-5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
-              <div className={overline}>Código da sua barbearia</div>
-              <div className="font-display text-3xl font-extrabold text-amber-400 tracking-[0.3em] mt-1">{newShopCode}</div>
-              <p className="text-xs text-muted-foreground mt-1">Compartilhe este código com seus clientes para o cadastro. Entrando...</p>
+          {pending && (
+            <div data-testid="pending-request-box" className="mt-6 rounded-xl border border-amber-500/30 bg-amber-500/10 p-5">
+              <div className={overline}>Cadastro em análise</div>
+              <p className="text-sm text-foreground mt-2">{pending.message}</p>
+              <div className="mt-3 text-sm text-muted-foreground">Código da sua barbearia:</div>
+              <div className="font-display text-2xl font-extrabold text-amber-400 tracking-[0.3em]">{pending.code}</div>
+              <p className="text-xs text-muted-foreground mt-2">Este código só permitirá o cadastro de clientes após a aprovação. Guarde-o para acessar sua conta.</p>
+              <button data-testid="pending-back-btn" onClick={() => { setPending(null); setMode("login"); }} className={btnPrimary + " w-full mt-4"}>Voltar para entrar</button>
             </div>
           )}
 
+          {!pending && (
           <form onSubmit={submit} className="mt-7 space-y-4">
-            {mode === "create-shop" && (
-              <div>
-                <label className="text-sm font-medium">Nome da barbearia</label>
-                <input data-testid="shop-name-input" className={input + " mt-1.5"} value={form.shop_name} onChange={upd("shop_name")} required placeholder="Ex: Barbearia do João" />
-              </div>
+            {mode === "request-access" && (
+              <>
+                <div>
+                  <label className="text-sm font-medium">Nome da barbearia</label>
+                  <input data-testid="shop-name-input" className={input + " mt-1.5"} value={form.shop_name} onChange={upd("shop_name")} required placeholder="Ex: Barbearia do João" />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">CPF ou CNPJ</label>
+                  <input data-testid="cpf-cnpj-input" className={input + " mt-1.5"} value={form.cpf_cnpj} onChange={upd("cpf_cnpj")} required placeholder="000.000.000-00 ou 00.000.000/0000-00" />
+                </div>
+              </>
             )}
 
-            {mode !== "create-shop" && (
+            {mode !== "request-access" && (
               <div>
                 <label className="text-sm font-medium flex items-center gap-1.5"><Store className="h-3.5 w-3.5 text-amber-500" /> Código da barbearia</label>
                 <input data-testid="shop-code-input" className={input + " mt-1.5 uppercase tracking-widest"} value={form.shop_code} onChange={(e) => setForm({ ...form, shop_code: e.target.value.toUpperCase() })} required placeholder="EX: DEMO01" />
@@ -125,7 +134,7 @@ export default function Login() {
 
             {mode !== "login" && (
               <div>
-                <label className="text-sm font-medium">{mode === "create-shop" ? "Seu nome (dono)" : "Nome completo"}</label>
+                <label className="text-sm font-medium">{mode === "request-access" ? "Nome do responsável" : "Nome completo"}</label>
                 <input data-testid="register-name-input" className={input + " mt-1.5"} value={form.name} onChange={upd("name")} required placeholder="Seu nome" />
               </div>
             )}
@@ -153,10 +162,12 @@ export default function Login() {
             </div>
 
             <button data-testid="login-submit-btn" type="submit" disabled={loading} className={btnPrimary + " w-full"}>
-              {loading ? "Aguarde..." : mode === "login" ? "Entrar" : mode === "register" ? "Cadastrar" : "Criar barbearia"}
+              {loading ? "Aguarde..." : mode === "login" ? "Entrar" : mode === "register" ? "Cadastrar" : "Solicitar acesso"}
             </button>
           </form>
+          )}
 
+          {!pending && (
           <div className="mt-6 space-y-2 text-center text-sm text-muted-foreground">
             {mode === "login" && (
               <>
@@ -166,16 +177,17 @@ export default function Login() {
                 </p>
                 <p>
                   É dono de barbearia?{" "}
-                  <button data-testid="go-create-shop-btn" onClick={() => setMode("create-shop")} className="text-amber-500 font-semibold hover:underline">Criar minha barbearia</button>
+                  <button data-testid="go-create-shop-btn" onClick={() => setMode("request-access")} className="text-amber-500 font-semibold hover:underline">Solicitar acesso para minha barbearia</button>
                 </p>
               </>
             )}
             {mode !== "login" && (
-              <button data-testid="back-to-login-btn" onClick={() => { setMode("login"); setNewShopCode(null); }} className="inline-flex items-center gap-1 text-amber-500 font-semibold hover:underline">
+              <button data-testid="back-to-login-btn" onClick={() => { setMode("login"); setPending(null); }} className="inline-flex items-center gap-1 text-amber-500 font-semibold hover:underline">
                 <ArrowLeft className="h-4 w-4" /> Voltar para entrar
               </button>
             )}
           </div>
+          )}
         </div>
       </div>
     </div>

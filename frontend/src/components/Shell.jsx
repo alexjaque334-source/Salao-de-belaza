@@ -5,6 +5,7 @@ import {
   LogOut, CalendarPlus, History, Sparkles, Menu, X, BarChart3,
 } from "lucide-react";
 import { useState } from "react";
+import { ShopStatusScreen } from "@/components/ShopStatusScreen";
 
 const adminNav = [
   { to: "/dashboard", label: "Visão Geral", icon: LayoutDashboard, testid: "nav-dashboard-tab" },
@@ -29,6 +30,10 @@ export function Shell() {
   const [open, setOpen] = useState(false);
   const nav = user.role === "admin" ? adminNav : clientNav;
 
+  if (user.shop_status && user.shop_status !== "active") {
+    return <ShopStatusScreen status={user.shop_status} shopName={user.shop_name} shopCode={user.shop_code} />;
+  }
+
   const doLogout = () => {
     logout();
     navigate("/login");
@@ -45,11 +50,16 @@ export function Shell() {
             <div className="font-display font-extrabold text-lg leading-none tracking-tight">
               BARBER<span className="text-amber-500">STUDIO</span>
             </div>
-            <div className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground mt-1 font-serif-accent">
-              Est. 2026
+            <div className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground mt-1 font-serif-accent" data-testid="shop-name-label">
+              {user.shop_name || "Est. 2026"}
             </div>
           </div>
         </div>
+        {user.shop_code && (
+          <div className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 text-[11px] font-semibold text-amber-400" data-testid="shop-code-badge">
+            Código: {user.shop_code}
+          </div>
+        )}
       </div>
 
       <nav className="flex-1 px-3 py-5 space-y-1 overflow-y-auto">

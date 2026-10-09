@@ -1,0 +1,26 @@
+{
+  "summary": "Walk-in (sem cadastro) appointment feature fully validated. Backend: 9/9 pytest in /app/backend/tests/test_walkin_appointments.py — walk-in POST /api/appointments with client_name+client_phone returns 200 with client_id=null, no new user is created (GET /api/clients count unchanged), status 'Confirmado'; registered-client regression works; conflict check returns 409 on duplicate shop_id+barber+date+time; /api/availability flips available=false for the taken slot; POST without client_id and without client_name returns 400; walk-in appears in GET /api/appointments; PATCH /appointments/{id}/status to 'Concluído' adds price to /reports/barbers revenue and commission for the correct barber and bumps /dashboard/stats revenue_total; PATCH to 'Cancelado' and DELETE both return 200; multi-shop isolation holds — a 2nd approved shop admin (created via /auth/request-access + /platform/shops/{id}/approve) does NOT see DEMO01 walk-in in GET /api/appointments and gets 404 on PATCH/DELETE of its id. Frontend: /agendamentos -> Novo Agendamento opens dialog with client-mode-toggle; walk-in mode shows walkin-name-input and walkin-phone-input and hides booking-client-select; filling nome+telefone, selecting barber/service/date (2026-12-07) + first time slot and pressing booking-submit-button creates the appointment which appears in appointments-table with the given name (toast 'Agendamento confirmado para 07/12/2026 às 09:00'). Switching back to 'Cliente cadastrado' re-shows the client select and removes the walk-in inputs.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_walkin_appointments.py",
+    "/app/test_reports/pytest/walkin_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py grew to 1139 lines — still a single file. Overdue for splitting into routers (auth, platform, appointments, clients, reports) before adding more features.",
+    "AppointmentIn.client_phone defaults to empty string while client_name defaults to None — inconsistent (both are optional). Harmless but minor polish.",
+    "create_appointment branch when non-admin user tries to pass client_id/client_name silently ignores them (falls into else). Acceptable but could 400 to be explicit.",
+    "update_status increments barber.total_cuts and (for registered clients) adds points/total_spend, but there is no rollback if the status is later moved away from 'Concluído' — pre-existing behavior, not a walk-in regression.",
+    "Second-shop admin flow in isolation test needed /auth/request-access + /platform/shops/{id}/approve — note that cpf_cnpj and admin email are consumed in DB on each run (tests generate valid CNPJs on the fly to stay repeatable)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_walkin_appointments.py"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% on walk-in UI + registered-mode toggle"},
+  "test_credentials": "Admin DEMO01: shop_code=DEMO01 / alexjaque334@gmail.com / admin123. Super admin: alexjaque334@gmail.com / plataforma123 at POST /api/platform/login. Isolation test generates a fresh valid CNPJ and admin per run (TEST ISO <suffix>).",
+  "seed_data_creation": "Each run creates: 2 walk-in appointments on DEMO01 ('TEST Walkin João' completed, 'TEST Walkin Cancel' cancelled then deleted), 1 registered-client appointment (reuses first client or creates test_<rand>@ex.com), 1 extra pending-then-active shop 'TEST ISO <suffix>' with its admin isotest_<suffix>@example.com. Safe cleanup: db.shops.deleteMany({name:/^TEST /}) + delete related users/appointments.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run with: `python -m pytest /app/backend/tests/test_walkin_appointments.py -v -n 0`. Must pass -n 0 because pytest.ini defaults to -n 2 loadscope and TestWalkinCreate shares class attributes with TestWalkinLifecycleReports. Test file auto-loads REACT_APP_BACKEND_URL from /app/frontend/.env. CNPJ generator in test_walkin_appointments.py (_cnpj_digits + gen_valid_cnpj) can be reused. Phase 1 (test_multi_shop.py) and Phase 2 (test_phase2_platform.py) remain unchanged. Key UI data-testids confirmed working: new-appointment-btn, client-mode-toggle, client-mode-registered, client-mode-walkin, walkin-name-input, walkin-phone-input, booking-client-select, booking-barber-select, booking-service-select, booking-date-picker, booking-time-slot-HH-MM, booking-submit-button, appointments-table, appointment-row-<id>, complete-appt-<id>, cancel-appt-<id>, delete-appt-<id>, whatsapp-appt-<id>."
+}

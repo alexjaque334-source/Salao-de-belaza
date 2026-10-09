@@ -1,0 +1,26 @@
+{
+  "summary": "Phase 2 (Super Admin + approval + status gating) fully tested. Backend: 20/20 pytest cases passing in /app/backend/tests/test_phase2_platform.py — platform login (success/401/429 brute force), role separation (platform token -> 403 on CRM, CRM token -> 403 on /platform/*, no token -> 401), request-access (invalid CNPJ 400, pending creation returning {status:pending, shop_code}, duplicate 400), status gating (pending owner can login & /auth/me shows shop_status='pending', CRM endpoints 403, /auth/register on non-active 403), decisions (stats, list with masked CPF, detail unmasked, approve->active + decision_history entry, suspend->blocks client login + /auth/me suspended + CRM 403, reactivate restores), Phase-1 isolation preserved (two active shops don't share barbers, cross-shop PUT -> 404), super admin idempotence (/platform/me returns configured email), DEMO01 remains active, autopromotion blocked (PUT /api/clients role field is ignored and role stays 'client'). Frontend: /plataforma login works and routes to /plataforma/painel; platform-stats, 5 platform-filter-* buttons, platform-shops-table, platform-logout-btn all present; CPF list column is masked. Login screen 'Solicitar acesso' opens form with shop-name-input + cpf-cnpj-input; submitting a valid fresh CNPJ shows pending-request-box with the generated shop_code (observed 41CBX9) and pending-back-btn returns to login. Pending owner logging in via UI lands on shop-status-screen with status-logout-btn — not on CRM.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_phase2_platform.py",
+    "/app/test_reports/pytest/phase2_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py now ~1130 lines — still single file. Consider splitting into routers (auth, platform, crm resources) before next feature phase.",
+    "update_client accepts the full ClientIn body (name/phone/notes used, role not even in schema — good, autopromotion is blocked by schema). Make sure any future ClientIn fields keep role out.",
+    "DEMO01 is 'active' in preview but 'pending' in production via shop_status() fallback. OK for current preview tests but document this so prod seed does not surprise ops.",
+    "Super admin creation is idempotent on insert; however, if SUPERADMIN_PASSWORD env is ever rotated, the stored hash is NOT updated (comment explicitly says 'never reset here'). This is intentional for safety but worth highlighting in ops docs.",
+    "List endpoint /api/platform/shops iterates all shops in Python to filter by status + q — fine for current scale but should become a Mongo query ({status: ...} + text index) as count grows."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase2_platform.py"
+  ],
+  "success_rate": {"backend": "100% (20/20)", "frontend": "100% on critical Phase 2 UI flows"},
+  "test_credentials": "Super admin: alexjaque334@gmail.com / plataforma123 (POST /api/platform/login). Shop admin DEMO01 / alexjaque334@gmail.com / admin123. Fresh pending shops created on each run with dynamically generated valid CNPJs; VALID_CNPJ_1 (11.222.333/0001-81) and VALID_CPF (390.533.447-05) are consumed in the persistent DB.",
+  "seed_data_creation": "Created multiple TEST_ pending shops with fresh generated CNPJs and one shop 'TEST UI uitest<ts>' via UI (code 41CBX9). All test shops have cpf_cnpj digits-only and persist. Safe to prune: db.shops.deleteMany({name: /^TEST /}).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 2 validated end-to-end. Run backend tests with: `python -m pytest /app/backend/tests/test_phase2_platform.py -n 0 -v`. The test file auto-loads REACT_APP_BACKEND_URL from /app/frontend/.env. Both VALID_CNPJ_1 and VALID_CPF are now consumed in DB; test_phase2_platform.py handles this by skipping or using VALID_CNPJ_2 as fallback. For fresh runs, generate new valid CNPJs programmatically (helper in test file). Phase 1 regression file /app/backend/tests/test_multi_shop.py is still green. data-testids verified: platform-email-input, platform-password-input, platform-login-btn, platform-stats, platform-filter-{all,pending,active,suspended,rejected}, platform-search, platform-shops-table, platform-shop-row-<id>, approve-<id>, reject-<id>, suspend-<id>, reactivate-<id>, history-<id>, reason-input, confirm-reason-btn, platform-logout-btn, shop-name-input, cpf-cnpj-input, pending-request-box, pending-back-btn, shop-status-screen, status-logout-btn."
+}

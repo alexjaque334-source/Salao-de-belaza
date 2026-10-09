@@ -561,6 +561,35 @@ async def create_service(data: ServiceIn, admin: dict = Depends(require_admin)):
     out["id"] = oid(res.inserted_id)
     return out
 
+@api_router.put("/services/{service_id}")
+async def update_service(
+    service_id: str,
+    data: ServiceIn,
+    admin: dict = Depends(require_admin)
+):
+    if not ObjectId.is_valid(service_id):
+        raise HTTPException(400, "ID do serviço inválido")
+
+    result = await db.services.update_one(
+        {
+            "_id": ObjectId(service_id),
+            "shop_id": admin["shop_id"]
+        },
+        {
+            "$set": {
+                "name": data.name,
+                "duration": data.duration,
+                "price": data.price
+            }
+        }
+    )
+
+    if result.matched_count == 0:
+        raise HTTPException(404, "Serviço não encontrado")
+
+    return {"ok": True}
+    
+
 
 @api_router.patch("/services/{service_id}/status")
 async def change_service_status(

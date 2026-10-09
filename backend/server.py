@@ -553,12 +553,27 @@ async def create_service(data: ServiceIn, admin: dict = Depends(require_admin)):
     return out
 
 
-@api_router.delete("/services/{service_id}")
-async def delete_service(service_id: str, admin: dict = Depends(require_admin)):
-    res = await db.services.delete_one({"_id": ObjectId(service_id), "shop_id": admin["shop_id"]})
-    if res.deleted_count == 0:
+@api_router.patch("/services/{service_id}/status")
+async def change_service_status(
+    service_id: str,
+    admin: dict = Depends(require_admin)
+):
+    service = await db.services.find_one({
+        "_id": ObjectId(service_id),
+        "shop_id": admin["shop_id"]
+    })
+
+    if not service:
         raise HTTPException(404, "Serviço não encontrado")
-    return {"ok": True}
+
+    new_status = not service.get("active", True)
+
+    await db.services.update_one(
+        {"_id": service["_id"], "shop_id": admin["shop_id"]},
+        {"$set": {"active": new_status}}
+    )
+
+    return {"ok": True, "active": new_status}
 
 
 # ---------------- Availability ----------------

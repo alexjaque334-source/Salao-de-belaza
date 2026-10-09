@@ -1163,7 +1163,7 @@ async def seed():
     # Example barbershop (owner = ADMIN_EMAIL) so the app is usable on a fresh database.
     demo_code = os.environ.get("DEMO_SHOP_CODE", "DEMO01").upper()
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@example.com").lower()
-    admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
+    admin_password = os.environ.get("ADMIN_PASSWORD", "")
     # DEMO is active only outside production, so prod requires real approval flow.
     demo_status = "pending" if IS_PRODUCTION else "active"
     shop = await db.shops.find_one({"code": demo_code})
@@ -1179,15 +1179,13 @@ async def seed():
         await db.shops.update_one({"_id": shop["_id"]}, {"$set": {"status": demo_status}})
     shop_id = oid(shop["_id"])
     existing = await db.users.find_one({"shop_id": shop_id, "email": admin_email})
-    if not existing:
+    if not existing and admin_password:
         await db.users.insert_one({
             "email": admin_email, "password_hash": hash_password(admin_password),
             "name": "Administrador", "role": "admin", "phone": "", "shop_id": shop_id,
             "points": 0, "total_spend": 0, "created_at": datetime.now(timezone.utc).isoformat(),
         })
-    elif not verify_password(admin_password, existing["password_hash"]):
-        await db.users.update_one({"_id": existing["_id"]},
-                                  {"$set": {"password_hash": hash_password(admin_password)}})
+    # Existing admin passwords must never be overwritten during startup.
     await seed_shop_defaults(shop_id, with_barbers=True)
     logger.info(f"Seed concluído. Barbearia exemplo code={demo_code}")
 

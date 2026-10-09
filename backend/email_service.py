@@ -5,7 +5,7 @@ import logging
 import httpx
 from html import escape
 from html.parser import HTMLParser
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -215,4 +215,32 @@ async def safe_send_reminder(appt: dict) -> bool:
         return True
     except Exception as e:
         logger.warning(f"Reminder email not sent: {e}")
+        return False
+
+
+def activation_invite(invite: dict) -> tuple:
+    shop = invite.get("shop_name") or "BarberStudio"
+    name = (invite.get("client_name") or "cliente").split(" ")[0]
+    token = invite.get("token") or ""
+    activation_url = f"{APP_URL.rstrip('/')}/ativar-conta?token={quote(token, safe='')}"
+    subject = f"Ative sua conta — {shop}"
+    inner = (
+        f'<p style="font-size:16px;margin:0 0 6px">Olá, {escape(name)}!</p>'
+        f'<p style="font-size:14px;color:#a1a1aa;margin:0 0 16px">A {escape(shop)} criou seu acesso ao BarberStudio. Crie sua própria senha pelo botão abaixo.</p>'
+        f'<a href="{escape(activation_url)}" style="display:inline-block;background:#f59e0b;color:#0a0a0c;font-weight:700;font-size:14px;text-decoration:none;padding:11px 20px;border-radius:10px">Criar minha senha</a>'
+        '<p style="font-size:13px;color:#a1a1aa;margin:18px 0 0">Este link é de uso único e expira em 24 horas. Se você não reconhece este cadastro, ignore esta mensagem.</p>'
+    )
+    return subject, _wrap(shop, inner)
+
+
+async def safe_send_activation_invite(invite: dict) -> bool:
+    to = invite.get("client_email")
+    if not to:
+        return False
+    try:
+        subject, html = activation_invite(invite)
+        message_id = await send_email(to=to, subject=subject, html=html)
+        return bool(message_id)
+    except Exception as e:
+        logger.warning(f"Activation invite not sent: {e}")
         return False

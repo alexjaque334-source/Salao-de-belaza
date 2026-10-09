@@ -2,7 +2,7 @@ import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import {
   LayoutDashboard, CalendarDays, Users, Scissors, Crown, BadgeDollarSign,
-  LogOut, CalendarPlus, History, Sparkles, Menu, X, BarChart3,
+  LogOut, CalendarPlus, History, Sparkles, Menu, X, BarChart3, ClipboardList,
 } from "lucide-react";
 import { useState } from "react";
 import { ShopStatusScreen } from "@/components/ShopStatusScreen";
@@ -11,6 +11,7 @@ const adminNav = [
   { to: "/dashboard", label: "Visão Geral", icon: LayoutDashboard, testid: "nav-dashboard-tab" },
   { to: "/agendamentos", label: "Agendamentos", icon: CalendarDays, testid: "nav-agendamentos-tab" },
   { to: "/barbeiros", label: "Barbeiros", icon: Scissors, testid: "nav-barbeiros-tab" },
+  { to: "/servicos", label: "Serviços", icon: ClipboardList, testid: "nav-servicos-tab" },
   { to: "/clientes", label: "Clientes", icon: Users, testid: "nav-clientes-tab" },
   { to: "/fidelizados", label: "Fidelizados", icon: Crown, testid: "nav-fidelizados-tab" },
   { to: "/planos", label: "Planos", icon: BadgeDollarSign, testid: "nav-planos-tab" },

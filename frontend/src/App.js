@@ -8,6 +8,7 @@ import Login from "@/pages/Login";
 import Dashboard from "@/pages/admin/Dashboard";
 import Appointments from "@/pages/admin/Appointments";
 import Barbers from "@/pages/admin/Barbers";
+import Services from "@/pages/admin/Services";
 import Clients from "@/pages/admin/Clients";
 import Loyalty from "@/pages/admin/Loyalty";
 import Plans from "@/pages/admin/Plans";
@@ -54,6 +55,7 @@ function AppRoutes() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/agendamentos" element={<Appointments />} />
         <Route path="/barbeiros" element={<Barbers />} />
+        <Route path="/servicos" element={<Services />} />
         <Route path="/clientes" element={<Clients />} />
         <Route path="/fidelizados" element={<Loyalty />} />
         <Route path="/planos" element={<Plans />} />

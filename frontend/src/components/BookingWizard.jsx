@@ -22,7 +22,7 @@ export function BookingWizard({ isAdmin = false, onBooked }) {
 
   useEffect(() => {
     api.get("/barbers").then((r) => setBarbers(r.data.filter((b) => b.active)));
-    api.get("/services").then((r) => setServices(r.data));
+    api.get("/services").then((r) => setServices(r.data.filter((s) => s.active !== false)));
     if (isAdmin) api.get("/clients").then((r) => setClients(r.data)).catch(() => {});
   }, [isAdmin]);
 

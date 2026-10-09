@@ -613,12 +613,18 @@ async def list_appointments(user: dict = Depends(get_current_user)):
 @api_router.post("/appointments")
 async def create_appointment(data: AppointmentIn, user: dict = Depends(get_current_user)):
     sid = user["shop_id"]
-    barber = await db.barbers.find_one({"_id": ObjectId(data.barber_id), "shop_id": sid})
+       barber = await db.barbers.find_one({"_id": ObjectId(data.barber_id), "shop_id": sid})
     if not barber:
         raise HTTPException(404, "Barbeiro não encontrado")
-    service = await db.services.find_one({"_id": ObjectId(data.service_id), "shop_id": sid})
+
+    service = await db.services.find_one({
+        "_id": ObjectId(data.service_id),
+        "shop_id": sid,
+        "active": {"$ne": False}
+    })
     if not service:
         raise HTTPException(404, "Serviço não encontrado")
+
     exists = await db.appointments.find_one({
         "shop_id": sid, "barber_id": data.barber_id, "date": data.date, "time": data.time,
         "status": {"$ne": "Cancelado"},

@@ -15,6 +15,7 @@ import bcrypt
 import jwt
 import hmac
 import re
+import hashlib
 import email_service
 
 ROOT_DIR = Path(__file__).parent
@@ -347,8 +348,12 @@ class ClientIn(BaseModel):
     name: str
     email: EmailStr
     phone: Optional[str] = ""
-    password: Optional[str] = "cliente123"
     notes: Optional[str] = ""
+
+
+class ActivateClientIn(BaseModel):
+    token: str
+    password: str
 
 
 class LoyaltyIn(BaseModel):
@@ -478,6 +483,8 @@ async def login(data: LoginIn, request: Request):
     if not shop or not user or not verify_password(data.password, user["password_hash"]):
         await bump_attempt(ident)
         raise HTTPException(status_code=401, detail="Barbearia, e-mail ou senha inválidos")
+    if user.get("activation_pending"):
+        raise HTTPException(status_code=403, detail="Ative sua conta pelo link enviado ao seu e-mail.")
     # Clients cannot sign in to a non-active shop; owners can (to see the status screen).
     if user["role"] == "client" and shop_status(shop) != "active":
         raise HTTPException(status_code=403, detail="Esta barbearia não está disponível no momento.")
@@ -774,16 +781,65 @@ async def create_client(data: ClientIn, admin: dict = Depends(require_admin)):
     email = data.email.lower()
     if await db.users.find_one({"shop_id": sid, "email": email}):
         raise HTTPException(400, "E-mail já cadastrado nesta barbearia")
+
+    activation_code = secrets.token_urlsafe(32)
+    activation_digest = hashlib.sha256(activation_code.encode("utf-8")).hexdigest()
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
     doc = {
-        "email": email, "password_hash": hash_password(data.password or "cliente123"),
+        "email": email,
+        "password_hash": hash_password(secrets.token_urlsafe(48)),
         "name": data.name, "role": "client", "phone": data.phone, "shop_id": sid,
         "points": 0, "total_spend": 0, "preferred_barber": "", "notes": data.notes,
+        "activation_pending": True,
+        "activation_token_hash": activation_digest,
+        "activation_expires_at": expires_at.isoformat(),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     res = await db.users.insert_one(doc)
     doc["_id"] = res.inserted_id
+    shop = await db.shops.find_one({"_id": ObjectId(sid)})
+    sent = await email_service.safe_send_activation_invite({
+        "client_email": email, "client_name": data.name,
+        "shop_name": shop["name"] if shop else "BarberStudio",
+        "token": activation_code,
+    })
+    if not sent:
+        await db.users.delete_one({"_id": res.inserted_id, "shop_id": sid})
+        raise HTTPException(status_code=503, detail="Não foi possível enviar o convite de ativação. Tente novamente.")
     return serialize_user(doc)
 
+
+@api_router.post("/auth/activate-client")
+async def activate_client(data: ActivateClientIn, request: Request):
+    ident = f"activate:{client_ip(request)}"
+    await rate_limit(ident, max_attempts=10, window_minutes=30)
+    password = data.password or ""
+    if len(password) < 10 or not re.search(r"[A-Za-z]", password) or not re.search(r"\d", password):
+        await bump_attempt(ident)
+        raise HTTPException(status_code=400, detail="A senha deve ter pelo menos 10 caracteres, com letras e números.")
+
+    digest = hashlib.sha256(data.token.encode("utf-8")).hexdigest()
+    now = datetime.now(timezone.utc)
+    user = await db.users.find_one({
+        "role": "client", "activation_pending": True, "activation_token_hash": digest,
+        "activation_expires_at": {"$gt": now.isoformat()},
+    })
+    if not user:
+        await bump_attempt(ident)
+        raise HTTPException(status_code=400, detail="Link de ativação inválido, expirado ou já utilizado.")
+
+    result = await db.users.update_one(
+        {"_id": user["_id"], "activation_pending": True, "activation_token_hash": digest,
+         "activation_expires_at": {"$gt": now.isoformat()}},
+        {"$set": {"password_hash": hash_password(password), "activation_pending": False,
+                  "activated_at": now.isoformat()},
+         "$unset": {"activation_token_hash": "", "activation_expires_at": ""}},
+    )
+    if result.modified_count != 1:
+        await bump_attempt(ident)
+        raise HTTPException(status_code=400, detail="Link de ativação inválido, expirado ou já utilizado.")
+    await clear_attempts(ident)
+    return {"ok": True, "message": "Conta ativada com sucesso. Você já pode entrar."}
 
 @api_router.put("/clients/{client_id}")
 async def update_client(client_id: str, data: ClientIn, admin: dict = Depends(require_admin)):

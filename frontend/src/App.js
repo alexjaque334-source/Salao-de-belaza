@@ -19,6 +19,7 @@ import ClientPlans from "@/pages/client/ClientPlans";
 import ClientLoyalty from "@/pages/client/ClientLoyalty";
 import PlatformLogin from "@/pages/platform/PlatformLogin";
 import PlatformDashboard from "@/pages/platform/PlatformDashboard";
+import ActivateClient from "@/pages/ActivateClient";
 
 function Protected({ children, role }) {
   const { user, ready } = useAuth();
@@ -48,6 +49,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<RootRedirect />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/ativar-conta" element={<ActivateClient />} />
       <Route path="/plataforma" element={<PlatformLogin />} />
       <Route path="/plataforma/painel" element={<PlatformDashboard />} />
 

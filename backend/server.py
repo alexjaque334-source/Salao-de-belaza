@@ -539,8 +539,17 @@ async def delete_barber(barber_id: str, admin: dict = Depends(require_admin)):
 # ---------------- Services ----------------
 @api_router.get("/services")
 async def list_services(user: dict = Depends(get_current_user)):
-    docs = await db.services.find({"shop_id": user["shop_id"]}).to_list(500)
-    return [{"id": oid(d["_id"]), **{k: v for k, v in d.items() if k != "_id"}} for d in docs]
+    query = {"shop_id": user["shop_id"]}
+
+    if user["role"] != "admin":
+        query["active"] = {"$ne": False}
+
+    docs = await db.services.find(query).to_list(500)
+
+    return [
+        {"id": oid(d["_id"]), **{k: v for k, v in d.items() if k != "_id"}}
+        for d in docs
+    ]
 
 
 @api_router.post("/services")

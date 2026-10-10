@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
-  ShieldCheck, LogOut, Search, CheckCircle2, XCircle, Ban, RotateCcw, History, Store, Plus, Pencil, Power,
+  ShieldCheck, LogOut, Search, CheckCircle2, XCircle, Ban, RotateCcw, History, Store, Plus, Pencil, Power, LayoutDashboard, CreditCard,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { platformApi } from "@/lib/platformApi";
@@ -144,11 +144,18 @@ export default function PlatformDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto p-4 sm:p-8">
-        <div className="flex gap-2 mb-6">
-          <button onClick={() => setSection("shops")} className={section === "shops" ? btnPrimary : btnSecondary}>Barbearias</button>
-          <button onClick={() => setSection("plans")} className={section === "plans" ? btnPrimary : btnSecondary}>Planos</button>
-        </div>
-
+        <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-6">
+          <aside className={card + " p-3 h-fit lg:sticky lg:top-24"}>
+            <div className="px-3 py-2 mb-2">
+              <div className={overline}>Super Admin</div>
+              <div className="font-display font-bold mt-1">Painel da plataforma</div>
+            </div>
+            <nav className="space-y-1">
+              <button onClick={() => setSection("shops")} className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all ${section === "shops" ? "bg-amber-500/10 text-amber-400" : "text-muted-foreground hover:bg-secondary hover:text-foreground"}`}><LayoutDashboard className="h-4 w-4" /> Dashboard</button>
+              <button onClick={() => setSection("plans")} className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all ${section === "plans" ? "bg-amber-500/10 text-amber-400" : "text-muted-foreground hover:bg-secondary hover:text-foreground"}`}><CreditCard className="h-4 w-4" /> Planos da plataforma</button>
+            </nav>
+          </aside>
+          <section className="min-w-0">
         {section === "shops" ? <>
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6" data-testid="platform-stats">
           <StatCard label="Total" value={stats.total} cls="" />
@@ -251,6 +258,8 @@ export default function PlatformDashboard() {
             </table>
           </div>
         </>}
+          </section>
+        </div>
       </main>
 
       <Dialog open={!!assignShop} onOpenChange={(o) => !o && setAssignShop(null)}>

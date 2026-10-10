@@ -338,6 +338,12 @@ class LoginIn(BaseModel):
     password: str
 
 
+class WhatsAppIntegrationIn(BaseModel):
+    phone: str
+    booking_enabled: bool = True
+    plans_enabled: bool = True
+
+
 class BarberIn(BaseModel):
     name: str
     specialty: Optional[str] = ""
@@ -515,6 +521,39 @@ async def resolve_shop(code: str):
     if not shop:
         raise HTTPException(status_code=404, detail="Barbearia não encontrada")
     return {"code": shop["code"], "name": shop["name"]}
+
+
+# ---------------- WhatsApp integration ----------------
+@api_router.get("/integrations/whatsapp")
+async def get_whatsapp_integration(admin: dict = Depends(require_admin)):
+    doc = await db.whatsapp_integrations.find_one({"shop_id": admin["shop_id"]})
+    if not doc:
+        return {"phone": "", "status": "not_connected", "booking_enabled": True, "plans_enabled": True}
+    return {
+        "phone": doc.get("phone", ""), "status": doc.get("status", "configured"),
+        "booking_enabled": doc.get("booking_enabled", True),
+        "plans_enabled": doc.get("plans_enabled", True),
+    }
+
+
+@api_router.put("/integrations/whatsapp")
+async def save_whatsapp_integration(data: WhatsAppIntegrationIn, admin: dict = Depends(require_admin)):
+    phone = _only_digits(data.phone)
+    if len(phone) < 10 or len(phone) > 13:
+        raise HTTPException(400, "Número de WhatsApp inválido")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.whatsapp_integrations.update_one(
+        {"shop_id": admin["shop_id"]},
+        {"$set": {
+            "shop_id": admin["shop_id"], "phone": data.phone.strip(),
+            "phone_normalized": phone, "status": "configured",
+            "booking_enabled": data.booking_enabled, "plans_enabled": data.plans_enabled,
+            "updated_at": now,
+        }, "$setOnInsert": {"created_at": now}},
+        upsert=True,
+    )
+    return {"phone": data.phone.strip(), "status": "configured",
+            "booking_enabled": data.booking_enabled, "plans_enabled": data.plans_enabled}
 
 
 # ---------------- Platform plan limits ----------------

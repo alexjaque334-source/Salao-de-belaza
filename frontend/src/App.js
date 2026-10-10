@@ -15,6 +15,7 @@ import Plans from "@/pages/admin/Plans";
 import Reports from "@/pages/admin/Reports";
 import PlatformLogin from "@/pages/platform/PlatformLogin";
 import PlatformDashboard from "@/pages/platform/PlatformDashboard";
+import PublicBooking from "@/pages/PublicBooking";
 
 function Protected({ children, role }) {
   const { user, ready } = useAuth();
@@ -44,6 +45,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<RootRedirect />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/agendar/:slug" element={<PublicBooking />} />
       <Route path="/plataforma" element={<PlatformLogin />} />
       <Route path="/plataforma/painel" element={<PlatformDashboard />} />
 

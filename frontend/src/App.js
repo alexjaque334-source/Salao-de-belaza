@@ -13,7 +13,6 @@ import Clients from "@/pages/admin/Clients";
 import Loyalty from "@/pages/admin/Loyalty";
 import Plans from "@/pages/admin/Plans";
 import Reports from "@/pages/admin/Reports";
-import WhatsAppSettings from "@/pages/admin/WhatsAppSettings";
 import PlatformLogin from "@/pages/platform/PlatformLogin";
 import PlatformDashboard from "@/pages/platform/PlatformDashboard";
 
@@ -57,7 +56,6 @@ function AppRoutes() {
         <Route path="/fidelizados" element={<Loyalty />} />
         <Route path="/planos" element={<Plans />} />
         <Route path="/relatorios" element={<Reports />} />
-        <Route path="/whatsapp" element={<WhatsAppSettings />} />
       </Route>
 
 

@@ -1169,10 +1169,27 @@ async def platform_me(admin: dict = Depends(get_super_admin)):
 
 @api_router.get("/platform/stats")
 async def platform_stats(_: dict = Depends(get_super_admin)):
-    out = {"active": 0, "pending": 0, "suspended": 0, "rejected": 0, "total": 0}
+    out = {
+        "active": 0, "pending": 0, "suspended": 0, "rejected": 0, "total": 0,
+        "subscriptions_active": 0, "subscriptions_past_due": 0,
+        "subscriptions_pending": 0, "projected_mrr": 0.0,
+    }
+    plans = {oid(p["_id"]): p for p in await db.platform_plans.find().to_list(500)}
     for shop in await db.shops.find().to_list(5000):
-        out[shop_status(shop)] = out.get(shop_status(shop), 0) + 1
+        status = shop_status(shop)
+        out[status] = out.get(status, 0) + 1
         out["total"] += 1
+        sub_status = shop.get("subscription_status", "unassigned")
+        if sub_status == "active":
+            out["subscriptions_active"] += 1
+            plan = plans.get(oid(shop["platform_plan_id"])) if shop.get("platform_plan_id") else None
+            if plan:
+                out["projected_mrr"] += float(plan.get("monthly_price", 0) or 0)
+        elif sub_status == "past_due":
+            out["subscriptions_past_due"] += 1
+        elif sub_status == "pending":
+            out["subscriptions_pending"] += 1
+    out["projected_mrr"] = round(out["projected_mrr"], 2)
     return out
 
 

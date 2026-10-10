@@ -17,6 +17,7 @@ export default function Services() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [changingId, setChangingId] = useState(null);
+  const [view, setView] = useState("active");
 
   const load = async () => {
     try {
@@ -121,6 +122,10 @@ export default function Services() {
     }
   };
 
+  const visibleServices = services.filter((service) =>
+    view === "active" ? service.active !== false : service.active === false
+  );
+
   const formatPrice = (value) =>
     Number(value || 0).toLocaleString("pt-BR", {
       style: "currency",
@@ -145,6 +150,11 @@ export default function Services() {
         }
       />
 
+      <div className="flex gap-2 mb-5">
+        <button onClick={() => setView("active")} className={view === "active" ? btnPrimary : btnSecondary}>Serviços ativos</button>
+        <button onClick={() => setView("inactive")} className={view === "inactive" ? btnPrimary : btnSecondary}>Serviços desativados</button>
+      </div>
+
       {services.length === 0 ? (
         <div className={card + " p-8 text-center"}>
           <Scissors className="h-10 w-10 text-amber-400 mx-auto mb-3" />
@@ -160,7 +170,7 @@ export default function Services() {
           className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5"
           data-testid="services-grid"
         >
-          {services.map((service) => {
+          {visibleServices.map((service) => {
             const active = service.active !== false;
 
             return (

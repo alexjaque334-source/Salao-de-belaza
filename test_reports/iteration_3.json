@@ -18,7 +18,7 @@
     "/app/backend/tests/test_phase2_platform.py"
   ],
   "success_rate": {"backend": "100% (20/20)", "frontend": "100% on critical Phase 2 UI flows"},
-  "test_credentials": "Super admin: alexjaque334@gmail.com / plataforma123 (POST /api/platform/login). Shop admin DEMO01 / alexjaque334@gmail.com / admin123. Fresh pending shops created on each run with dynamically generated valid CNPJs; VALID_CNPJ_1 (11.222.333/0001-81) and VALID_CPF (390.533.447-05) are consumed in the persistent DB.",
+  "test_credentials": "Redacted: test credentials must be supplied only through environment variables.",
   "seed_data_creation": "Created multiple TEST_ pending shops with fresh generated CNPJs and one shop 'TEST UI uitest<ts>' via UI (code 41CBX9). All test shops have cpf_cnpj digits-only and persist. Safe to prune: db.shops.deleteMany({name: /^TEST /}).",
   "retest_needed": false,
   "main_agent_can_self_test": true,

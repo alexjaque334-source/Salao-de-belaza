@@ -54,12 +54,10 @@ export default function Reports() {
         <>
           <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
             <div className="text-sm text-muted-foreground">Período: <span className="text-amber-400 font-semibold">{monthLabel(data.month)}</span></div>
-            {capabilities.pdf_reports ? (
+            {capabilities.pdf_reports && (
               <button onClick={exportPdf} className="print:hidden inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold bg-amber-500 text-zinc-950 hover:bg-amber-400">
                 <FileDown className="h-4 w-4" /> Exportar / salvar em PDF
               </button>
-            ) : (
-              <div className="print:hidden text-xs text-muted-foreground">Exportação em PDF disponível no plano Premium.</div>
             )}
           </div>
 

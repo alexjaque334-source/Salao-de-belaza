@@ -2,7 +2,7 @@ import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import {
   LayoutDashboard, CalendarDays, Users, Scissors, Crown, BadgeDollarSign,
-  LogOut, CalendarPlus, History, Sparkles, Menu, X, BarChart3, ClipboardList,
+  LogOut, Menu, X, BarChart3, ClipboardList, MessageCircle,
 } from "lucide-react";
 import { useState } from "react";
 import { ShopStatusScreen } from "@/components/ShopStatusScreen";
@@ -16,20 +16,15 @@ const adminNav = [
   { to: "/fidelizados", label: "Fidelizados", icon: Crown, testid: "nav-fidelizados-tab" },
   { to: "/planos", label: "Planos", icon: BadgeDollarSign, testid: "nav-planos-tab" },
   { to: "/relatorios", label: "Relatórios", icon: BarChart3, testid: "nav-relatorios-tab" },
+  { to: "/whatsapp", label: "WhatsApp", icon: MessageCircle, testid: "nav-whatsapp-tab" },
 ];
 
-const clientNav = [
-  { to: "/agendar", label: "Agendar Horário", icon: CalendarPlus, testid: "nav-public-booking-tab" },
-  { to: "/meus-agendamentos", label: "Meus Agendamentos", icon: History, testid: "nav-my-appointments-tab" },
-  { to: "/planos-cliente", label: "Planos", icon: BadgeDollarSign, testid: "nav-client-plans-tab" },
-  { to: "/fidelidade", label: "Minha Fidelidade", icon: Sparkles, testid: "nav-client-loyalty-tab" },
-];
 
 export function Shell() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const nav = user.role === "admin" ? adminNav : clientNav;
+  const nav = adminNav;
 
   if (user.shop_status && user.shop_status !== "active") {
     return <ShopStatusScreen status={user.shop_status} shopName={user.shop_name} shopCode={user.shop_code} />;

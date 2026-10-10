@@ -299,6 +299,10 @@ class PlatformPlanStatusIn(BaseModel):
     active: bool
 
 
+class PlatformShopPlanIn(BaseModel):
+    plan_id: str
+
+
 class RegisterIn(BaseModel):
     shop_code: str
     name: str
@@ -1096,6 +1100,9 @@ def _shop_admin_summary(shop: dict, full: bool = False) -> dict:
         "phone": shop.get("phone", ""),
         "cpf_cnpj": shop.get("cpf_cnpj", "") if full else mask_doc(shop.get("cpf_cnpj", "")),
         "decision_history": shop.get("decision_history", []),
+        "platform_plan_id": oid(shop["platform_plan_id"]) if shop.get("platform_plan_id") else None,
+        "platform_plan_name": shop.get("platform_plan_name", ""),
+        "subscription_status": shop.get("subscription_status", "unassigned"),
         "created_at": shop.get("created_at"),
     }
 
@@ -1141,6 +1148,40 @@ async def platform_list_shops(status: Optional[str] = None, q: Optional[str] = N
                 continue
         out.append(_shop_admin_summary(s))
     return out
+
+
+@api_router.put("/platform/shops/{shop_id}/plan")
+async def platform_assign_shop_plan(shop_id: str, data: PlatformShopPlanIn, admin: dict = Depends(get_super_admin)):
+    try:
+        sid = ObjectId(shop_id)
+        pid = ObjectId(data.plan_id)
+    except Exception:
+        raise HTTPException(400, "Barbearia ou plano inválido")
+    shop = await db.shops.find_one({"_id": sid})
+    if not shop:
+        raise HTTPException(404, "Barbearia não encontrada")
+    plan = await db.platform_plans.find_one({"_id": pid})
+    if not plan:
+        raise HTTPException(404, "Plano não encontrado")
+    if not plan.get("active", True):
+        raise HTTPException(400, "Não é possível vincular um plano inativo")
+    now = datetime.now(timezone.utc).isoformat()
+    history = {
+        "action": "alterou plano",
+        "by": admin["email"],
+        "at": now,
+        "reason": f"Plano: {plan.get('name', '')}",
+    }
+    await db.shops.update_one(
+        {"_id": sid},
+        {"$set": {
+            "platform_plan_id": pid,
+            "platform_plan_name": plan.get("name", ""),
+            "subscription_status": "active",
+            "subscription_updated_at": now,
+        }, "$push": {"decision_history": history}},
+    )
+    return _shop_admin_summary(await db.shops.find_one({"_id": sid}), full=True)
 
 
 @api_router.get("/platform/shops/{shop_id}")

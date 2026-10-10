@@ -9,7 +9,7 @@ import { btnPrimary, input, overline } from "@/lib/styles";
 export default function Login() {
   const { authenticate } = useAuth();
   const navigate = useNavigate();
-  const [mode, setMode] = useState("login"); // login | register | request-access
+  const [mode, setMode] = useState("login"); // login | request-access
   const [form, setForm] = useState({ shop_code: "", shop_name: "", name: "", email: "", password: "", phone: "", cpf_cnpj: "" });
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -33,15 +33,7 @@ export default function Login() {
         });
         setPending({ code: data.shop_code, message: data.message });
         toast.success("Solicitação enviada!");
-      } else if (mode === "register") {
-        const { data } = await api.post("/auth/register", {
-          shop_code: form.shop_code, name: form.name, email: form.email,
-          password: form.password, phone: form.phone,
-        });
-        if (data.status === "verification_required") {
-          toast.success(data.message || "Verifique seu e-mail para ativar a conta.");
-          setMode("login");
-        } else {
+      } else {
           goAfter(data);
         }
       } else {
@@ -60,12 +52,10 @@ export default function Login() {
 
   const titles = {
     login: "Entrar na conta",
-    register: "Criar conta de cliente",
     "request-access": "Solicitar acesso para minha barbearia",
   };
   const subtitles = {
     login: "Informe o código da barbearia, e-mail e senha.",
-    register: "Cadastre-se usando o código da sua barbearia.",
     "request-access": "Preencha os dados; seu cadastro passará por aprovação.",
   };
 
@@ -129,7 +119,7 @@ export default function Login() {
               </>
             )}
 
-            {mode !== "request-access" && (
+            {mode === "login" && (
               <div>
                 <label className="text-sm font-medium flex items-center gap-1.5"><Store className="h-3.5 w-3.5 text-amber-500" /> Código da barbearia</label>
                 <input data-testid="shop-code-input" className={input + " mt-1.5 uppercase tracking-widest"} value={form.shop_code} onChange={(e) => setForm({ ...form, shop_code: e.target.value.toUpperCase() })} required placeholder="EX: DEMO01" />
@@ -166,7 +156,7 @@ export default function Login() {
             </div>
 
             <button data-testid="login-submit-btn" type="submit" disabled={loading} className={btnPrimary + " w-full"}>
-              {loading ? "Aguarde..." : mode === "login" ? "Entrar" : mode === "register" ? "Cadastrar" : "Solicitar acesso"}
+              {loading ? "Aguarde..." : mode === "login" ? "Entrar" : "Solicitar acesso"}
             </button>
           </form>
           )}
@@ -175,10 +165,6 @@ export default function Login() {
           <div className="mt-6 space-y-2 text-center text-sm text-muted-foreground">
             {mode === "login" && (
               <>
-                <p>
-                  Ainda não tem conta?{" "}
-                  <button data-testid="go-register-btn" onClick={() => setMode("register")} className="text-amber-500 font-semibold hover:underline">Cadastre-se</button>
-                </p>
                 <p>
                   É dono de barbearia?{" "}
                   <button data-testid="go-create-shop-btn" onClick={() => setMode("request-access")} className="text-amber-500 font-semibold hover:underline">Solicitar acesso para minha barbearia</button>

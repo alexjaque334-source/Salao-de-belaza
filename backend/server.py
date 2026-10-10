@@ -476,6 +476,15 @@ async def request_access(data: ShopCreateIn, request: Request):
         "decision_history": [],
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+    # Every new barbershop starts on Essencial so limits are effective immediately.
+    starter_plan = await db.platform_plans.find_one({"name_normalized": "essencial", "active": {"$ne": False}})
+    if starter_plan:
+        shop_doc.update({
+            "platform_plan_id": starter_plan["_id"],
+            "platform_plan_name": starter_plan.get("name", "Essencial"),
+            "subscription_status": "pending",
+            "subscription_status_source": "manual",
+        })
     shop_res = await db.shops.insert_one(shop_doc)
     shop_id = oid(shop_res.inserted_id)
     email = data.email.lower()
@@ -1511,6 +1520,19 @@ async def platform_plan_status(plan_id: str, data: PlatformPlanStatusIn, _: dict
     return _platform_plan_summary(await db.platform_plans.find_one({"_id": pid}))
 
 
+@api_router.delete("/platform/plans/{plan_id}")
+async def platform_delete_plan(plan_id: str, _: dict = Depends(get_super_admin)):
+    pid = safe_object_id(plan_id, "Plano")
+    plan = await db.platform_plans.find_one({"_id": pid})
+    if not plan:
+        raise HTTPException(404, "Plano não encontrado")
+    in_use = await db.shops.count_documents({"platform_plan_id": pid})
+    if in_use:
+        raise HTTPException(409, f"Este plano está vinculado a {in_use} barbearia(s). Altere o plano delas antes de excluir.")
+    await db.platform_plans.delete_one({"_id": pid})
+    return {"ok": True}
+
+
 app.include_router(api_router)
 
 cors_raw = os.environ.get("CORS_ORIGINS", "").strip()
@@ -1545,7 +1567,18 @@ async def seed():
             pass
     try:
         await db.shops.create_index("code", unique=True)
-        await db.users.create_index([("shop_id", 1), ("email", 1)], unique=True)
+        # CRM clients intentionally have no e-mail. A normal unique compound index
+        # treats missing e-mail values as duplicates, blocking the 2nd CRM client.
+        try:
+            await db.users.drop_index("shop_id_1_email_1")
+        except Exception:
+            pass
+        await db.users.create_index(
+            [("shop_id", 1), ("email", 1)],
+            unique=True,
+            partialFilterExpression={"email": {"$type": "string"}},
+            name="shop_email_unique_when_present",
+        )
     except Exception as e:
         logger.warning(f"Index setup: {e}")
 

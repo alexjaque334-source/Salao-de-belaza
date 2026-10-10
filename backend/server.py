@@ -305,6 +305,16 @@ class PlatformShopPlanIn(BaseModel):
 
 class PlatformSubscriptionStatusIn(BaseModel):
     status: str
+    reason: Optional[str] = ""
+
+
+class PlatformSubscriptionProviderEventIn(BaseModel):
+    provider: str
+    external_subscription_id: str
+    status: str
+    event_id: Optional[str] = ""
+    payment_method: Optional[str] = ""
+    current_period_end: Optional[str] = None
 
 
 class RegisterIn(BaseModel):
@@ -1145,6 +1155,8 @@ def _shop_admin_summary(shop: dict, full: bool = False) -> dict:
         "subscription_current_period_end": shop.get("subscription_current_period_end"),
         "subscription_payment_method": shop.get("subscription_payment_method"),
         "billing_provider": shop.get("billing_provider"),
+        "external_subscription_id": shop.get("external_subscription_id"),
+        "subscription_status_source": shop.get("subscription_status_source", "manual"),
         "created_at": shop.get("created_at"),
     }
 
@@ -1258,12 +1270,56 @@ async def platform_subscription_status(shop_id: str, data: PlatformSubscriptionS
     if not shop:
         raise HTTPException(404, "Barbearia não encontrada")
     now = datetime.now(timezone.utc).isoformat()
-    entry = {"action": "alterou assinatura", "by": admin["email"], "at": now, "reason": f"Status: {status}"}
+    reason = f"Status: {status}" + (f" — {data.reason.strip()}" if data.reason and data.reason.strip() else "")
+    entry = {"action": "alterou assinatura", "by": admin["email"], "source": "manual", "at": now, "reason": reason}
     await db.shops.update_one(
         {"_id": sid},
-        {"$set": {"subscription_status": status, "subscription_updated_at": now}, "$push": {"decision_history": entry}},
+        {"$set": {
+            "subscription_status": status,
+            "subscription_status_source": "manual",
+            "subscription_updated_at": now,
+        }, "$push": {"decision_history": entry}},
     )
     return _shop_admin_summary(await db.shops.find_one({"_id": sid}), full=True)
+
+
+async def _apply_provider_subscription_event(shop: dict, event: PlatformSubscriptionProviderEventIn):
+    """Provider-neutral hook for future billing webhooks (Efí Bank will plug in here)."""
+    allowed = {"active", "pending", "past_due", "canceled", "suspended"}
+    status = event.status.strip().lower()
+    if status not in allowed:
+        raise HTTPException(400, "Status de assinatura inválido")
+    provider = event.provider.strip().lower()
+    now = datetime.now(timezone.utc).isoformat()
+    if event.event_id:
+        duplicate = await db.billing_events.find_one({"provider": provider, "event_id": event.event_id})
+        if duplicate:
+            return False
+    update = {
+        "subscription_status": status,
+        "subscription_status_source": provider,
+        "subscription_updated_at": now,
+        "billing_provider": provider,
+        "external_subscription_id": event.external_subscription_id,
+    }
+    if event.payment_method:
+        update["subscription_payment_method"] = event.payment_method
+    if event.current_period_end:
+        update["subscription_current_period_end"] = event.current_period_end
+    await db.shops.update_one(
+        {"_id": shop["_id"]},
+        {"$set": update, "$push": {"decision_history": {
+            "action": "atualizou assinatura", "by": provider, "source": "provider",
+            "at": now, "reason": f"Status: {status}",
+        }}},
+    )
+    if event.event_id:
+        await db.billing_events.insert_one({
+            "provider": provider, "event_id": event.event_id,
+            "external_subscription_id": event.external_subscription_id,
+            "shop_id": shop["_id"], "processed_at": now,
+        })
+    return True
 
 
 @api_router.get("/platform/shops/{shop_id}")

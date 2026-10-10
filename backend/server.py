@@ -38,6 +38,11 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------- Helpers ----------------
+def validate_password(password: str) -> None:
+    if len(password or "") < 10 or not re.search(r"[A-Za-z]", password or "") or not re.search(r"\d", password or ""):
+        raise HTTPException(status_code=400, detail="A senha deve ter pelo menos 10 caracteres, com letras e números.")
+
+
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
@@ -449,6 +454,7 @@ async def seed_shop_defaults(shop_id: str, with_barbers: bool = False):
 # ---------------- Auth routes ----------------
 @api_router.post("/auth/request-access")
 async def request_access(data: ShopCreateIn, request: Request):
+    validate_password(data.password)
     await rate_limit(f"req:{client_ip(request)}", max_attempts=8, window_minutes=30)
     if not valid_cpf_cnpj(data.cpf_cnpj):
         await bump_attempt(f"req:{client_ip(request)}")
@@ -483,6 +489,7 @@ async def request_access(data: ShopCreateIn, request: Request):
 
 @api_router.post("/auth/register")
 async def register(data: RegisterIn, request: Request):
+    validate_password(data.password)
     await rate_limit(f"reg:{client_ip(request)}", max_attempts=15, window_minutes=30)
     shop = await db.shops.find_one({"code": data.shop_code.strip().upper()})
     if not shop:
@@ -879,9 +886,11 @@ async def activate_client(data: ActivateClientIn, request: Request):
     ident = f"activate:{client_ip(request)}"
     await rate_limit(ident, max_attempts=10, window_minutes=30)
     password = data.password or ""
-    if len(password) < 10 or not re.search(r"[A-Za-z]", password) or not re.search(r"\d", password):
+    try:
+        validate_password(password)
+    except HTTPException:
         await bump_attempt(ident)
-        raise HTTPException(status_code=400, detail="A senha deve ter pelo menos 10 caracteres, com letras e números.")
+        raise
 
     digest = hashlib.sha256(data.token.encode("utf-8")).hexdigest()
     now = datetime.now(timezone.utc)
@@ -1009,9 +1018,9 @@ async def create_subscription(data: SubscriptionIn, user: dict = Depends(get_cur
     doc = {
         "shop_id": sid, "client_id": client_id, "client_name": client_name,
         "plan_id": data.plan_id, "plan_name": plan["name"], "price": plan["price"],
-        "status": "Ativo",
-        "start_date": datetime.now(timezone.utc).date().isoformat(),
-        "renewal_date": (datetime.now(timezone.utc) + timedelta(days=30)).date().isoformat(),
+        "status": "Pendente",
+        "start_date": None,
+        "renewal_date": None,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     out = dict(doc)
@@ -1456,12 +1465,19 @@ async def platform_plan_status(plan_id: str, data: PlatformPlanStatusIn, _: dict
 
 app.include_router(api_router)
 
+cors_raw = os.environ.get("CORS_ORIGINS", "").strip()
+if IS_PRODUCTION and not cors_raw:
+    logger.warning("CORS_ORIGINS is not configured in production; cross-origin browser requests are disabled.")
+cors_origins = [origin.strip() for origin in cors_raw.split(",") if origin.strip()]
+if not IS_PRODUCTION and not cors_origins:
+    cors_origins = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=cors_origins,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 

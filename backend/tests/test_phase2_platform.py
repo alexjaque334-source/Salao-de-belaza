@@ -28,11 +28,11 @@ _load_env()
 BASE = os.environ["REACT_APP_BACKEND_URL"].rstrip("/")
 API = f"{BASE}/api"
 
-SA_EMAIL = "alexjaque334@gmail.com"
-SA_PASS = "plataforma123"
-DEMO_CODE = "DEMO01"
-ADMIN_EMAIL = "alexjaque334@gmail.com"
-ADMIN_PASS = "admin123"
+SA_EMAIL = os.environ.get("SUPERADMIN_EMAIL", "")
+SA_PASS = os.environ.get("SUPERADMIN_PASSWORD", "")
+DEMO_CODE = os.environ.get("DEMO_SHOP_CODE", "DEMO01")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "")
+ADMIN_PASS = os.environ.get("ADMIN_PASSWORD", "")
 
 # Valid docs from problem statement
 VALID_CNPJ_1 = "11.222.333/0001-81"
@@ -47,6 +47,8 @@ def _uniq(prefix="TEST"):
 
 @pytest.fixture(scope="session")
 def super_token():
+    if not SA_EMAIL or not SA_PASS:
+        pytest.skip("Credenciais do Super Admin devem vir do ambiente")
     r = requests.post(f"{API}/platform/login", json={"email": SA_EMAIL, "password": SA_PASS})
     assert r.status_code == 200, r.text
     data = r.json()
@@ -61,6 +63,8 @@ def super_headers(super_token):
 
 @pytest.fixture(scope="session")
 def demo_admin_token():
+    if not ADMIN_EMAIL or not ADMIN_PASS:
+        pytest.skip("Credenciais do admin de teste devem vir do ambiente")
     r = requests.post(f"{API}/auth/login",
                       json={"shop_code": DEMO_CODE, "email": ADMIN_EMAIL, "password": ADMIN_PASS})
     assert r.status_code == 200, r.text

@@ -286,6 +286,19 @@ class DecisionIn(BaseModel):
     reason: Optional[str] = ""
 
 
+class PlatformPlanIn(BaseModel):
+    name: str
+    monthly_price: float = Field(ge=0)
+    description: Optional[str] = ""
+    max_professionals: int = Field(default=1, ge=1)
+    max_services: int = Field(default=1, ge=1)
+    active: bool = True
+
+
+class PlatformPlanStatusIn(BaseModel):
+    active: bool
+
+
 class RegisterIn(BaseModel):
     shop_code: str
     name: str
@@ -1172,6 +1185,94 @@ async def platform_suspend(shop_id: str, data: DecisionIn, admin: dict = Depends
 @api_router.post("/platform/shops/{shop_id}/reactivate")
 async def platform_reactivate(shop_id: str, data: DecisionIn, admin: dict = Depends(get_super_admin)):
     return await _decide(shop_id, "active", "reativou", admin, data.reason)
+
+
+def _platform_plan_summary(plan: dict) -> dict:
+    return {
+        "id": oid(plan["_id"]),
+        "name": plan.get("name", ""),
+        "monthly_price": plan.get("monthly_price", 0),
+        "description": plan.get("description", ""),
+        "max_professionals": plan.get("max_professionals", 1),
+        "max_services": plan.get("max_services", 1),
+        "active": plan.get("active", True),
+        "created_at": plan.get("created_at"),
+        "updated_at": plan.get("updated_at"),
+    }
+
+
+@api_router.get("/platform/plans")
+async def platform_list_plans(_: dict = Depends(get_super_admin)):
+    plans = await db.platform_plans.find().sort("created_at", -1).to_list(500)
+    return [_platform_plan_summary(p) for p in plans]
+
+
+@api_router.post("/platform/plans")
+async def platform_create_plan(data: PlatformPlanIn, _: dict = Depends(get_super_admin)):
+    name = data.name.strip()
+    if not name:
+        raise HTTPException(400, "Nome do plano é obrigatório")
+    if await db.platform_plans.find_one({"name_normalized": name.lower()}):
+        raise HTTPException(409, "Já existe um plano com esse nome")
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "name": name,
+        "name_normalized": name.lower(),
+        "monthly_price": data.monthly_price,
+        "description": (data.description or "").strip(),
+        "max_professionals": data.max_professionals,
+        "max_services": data.max_services,
+        "active": data.active,
+        "created_at": now,
+        "updated_at": now,
+    }
+    result = await db.platform_plans.insert_one(doc)
+    doc["_id"] = result.inserted_id
+    return _platform_plan_summary(doc)
+
+
+@api_router.put("/platform/plans/{plan_id}")
+async def platform_update_plan(plan_id: str, data: PlatformPlanIn, _: dict = Depends(get_super_admin)):
+    try:
+        pid = ObjectId(plan_id)
+    except Exception:
+        raise HTTPException(400, "Plano inválido")
+    existing = await db.platform_plans.find_one({"_id": pid})
+    if not existing:
+        raise HTTPException(404, "Plano não encontrado")
+    name = data.name.strip()
+    if not name:
+        raise HTTPException(400, "Nome do plano é obrigatório")
+    duplicate = await db.platform_plans.find_one({"name_normalized": name.lower(), "_id": {"$ne": pid}})
+    if duplicate:
+        raise HTTPException(409, "Já existe um plano com esse nome")
+    changes = {
+        "name": name,
+        "name_normalized": name.lower(),
+        "monthly_price": data.monthly_price,
+        "description": (data.description or "").strip(),
+        "max_professionals": data.max_professionals,
+        "max_services": data.max_services,
+        "active": data.active,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.platform_plans.update_one({"_id": pid}, {"$set": changes})
+    return _platform_plan_summary(await db.platform_plans.find_one({"_id": pid}))
+
+
+@api_router.patch("/platform/plans/{plan_id}/status")
+async def platform_plan_status(plan_id: str, data: PlatformPlanStatusIn, _: dict = Depends(get_super_admin)):
+    try:
+        pid = ObjectId(plan_id)
+    except Exception:
+        raise HTTPException(400, "Plano inválido")
+    if not await db.platform_plans.find_one({"_id": pid}):
+        raise HTTPException(404, "Plano não encontrado")
+    await db.platform_plans.update_one(
+        {"_id": pid},
+        {"$set": {"active": data.active, "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return _platform_plan_summary(await db.platform_plans.find_one({"_id": pid}))
 
 
 app.include_router(api_router)

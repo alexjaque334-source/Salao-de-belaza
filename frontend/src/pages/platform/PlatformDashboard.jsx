@@ -16,6 +16,14 @@ const STATUS_META = {
   rejected: { label: "Rejeitada", cls: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20" },
 };
 const FILTERS = [["", "Todas"], ["pending", "Pendentes"], ["active", "Ativas"], ["suspended", "Suspensas"], ["rejected", "Rejeitadas"]];
+const SUBSCRIPTION_META = {
+  active: { label: "Ativa", cls: STATUS_META.active.cls },
+  pending: { label: "Pendente", cls: STATUS_META.pending.cls },
+  past_due: { label: "Atrasada", cls: STATUS_META.suspended.cls },
+  canceled: { label: "Cancelada", cls: STATUS_META.rejected.cls },
+  suspended: { label: "Suspensa", cls: STATUS_META.suspended.cls },
+  unassigned: { label: "Sem assinatura", cls: STATUS_META.rejected.cls },
+};
 
 export default function PlatformDashboard() {
   const navigate = useNavigate();
@@ -31,6 +39,8 @@ export default function PlatformDashboard() {
   const [planModal, setPlanModal] = useState(null);
   const [assignShop, setAssignShop] = useState(null);
   const [selectedPlanId, setSelectedPlanId] = useState("");
+  const [subscriptionShop, setSubscriptionShop] = useState(null);
+  const [subscriptionStatus, setSubscriptionStatus] = useState("pending");
   const [planForm, setPlanForm] = useState({ name: "", monthly_price: "", description: "", max_professionals: 1, max_services: 1, active: true });
 
   const load = async () => {
@@ -94,6 +104,15 @@ export default function PlatformDashboard() {
       await platformApi.put(`/platform/shops/${assignShop.id}/plan`, { plan_id: selectedPlanId });
       toast.success(`Plano atualizado para ${assignShop.name}`);
       setAssignShop(null);
+      load();
+    } catch (e) { toast.error(apiError(e)); }
+  };
+
+  const saveSubscriptionStatus = async () => {
+    try {
+      await platformApi.patch(`/platform/shops/${subscriptionShop.id}/subscription-status`, { status: subscriptionStatus });
+      toast.success(`Assinatura de ${subscriptionShop.name} atualizada`);
+      setSubscriptionShop(null);
       load();
     } catch (e) { toast.error(apiError(e)); }
   };
@@ -217,7 +236,7 @@ export default function PlatformDashboard() {
                       <td className="px-5 py-3"><div>{s.responsible_name || "—"}</div><div className="text-xs text-muted-foreground">{s.email}</div></td>
                       <td className="px-5 py-3 font-mono text-xs">{s.cpf_cnpj || "—"}</td>
                       <td className="px-5 py-3"><span className={badge(m.cls)}>{m.label}</span></td>
-                      <td className="px-5 py-3"><button onClick={() => openAssignPlan(s)} className="text-left hover:text-amber-400 transition-colors"><div className="font-medium">{s.platform_plan_name || "Sem plano"}</div><div className="text-xs text-muted-foreground">{s.subscription_status === "active" ? "Assinatura ativa" : "Definir plano"}</div></button></td>
+                      <td className="px-5 py-3"><button onClick={() => openAssignPlan(s)} className="text-left hover:text-amber-400 transition-colors"><div className="font-medium">{s.platform_plan_name || "Sem plano"}</div><div className="text-xs text-muted-foreground">Clique para alterar o plano</div></button><button onClick={() => { setSubscriptionStatus(s.subscription_status || "pending"); setSubscriptionShop(s); }} className="block mt-1"><span className={badge((SUBSCRIPTION_META[s.subscription_status] || SUBSCRIPTION_META.unassigned).cls)}>{(SUBSCRIPTION_META[s.subscription_status] || SUBSCRIPTION_META.unassigned).label}</span></button></td>
                       <td className="px-5 py-3">
                         <div className="flex items-center justify-end gap-1 flex-wrap">
                           {s.status === "pending" && (
@@ -272,6 +291,21 @@ export default function PlatformDashboard() {
           </section>
         </div>
       </main>
+
+      <Dialog open={!!subscriptionShop} onOpenChange={(o) => !o && setSubscriptionShop(null)}>
+        <DialogContent className="max-w-md bg-card border-border">
+          <DialogHeader><DialogTitle className="font-display text-xl">Assinatura — {subscriptionShop?.name}</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div><label className="text-sm font-medium">Status da assinatura</label>
+              <select value={subscriptionStatus} onChange={(e) => setSubscriptionStatus(e.target.value)} className={input + " mt-1"}>
+                <option value="active">Ativa</option><option value="pending">Pendente</option><option value="past_due">Atrasada</option><option value="suspended">Suspensa</option><option value="canceled">Cancelada</option>
+              </select>
+              <p className="text-xs text-muted-foreground mt-2">Controle manual temporário. Futuramente este status poderá ser atualizado automaticamente pelo provedor de pagamento.</p>
+            </div>
+            <div className="flex justify-end gap-2"><button onClick={() => setSubscriptionShop(null)} className={btnSecondary}>Cancelar</button><button onClick={saveSubscriptionStatus} className={btnPrimary}>Salvar status</button></div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!assignShop} onOpenChange={(o) => !o && setAssignShop(null)}>
         <DialogContent className="max-w-md bg-card border-border">

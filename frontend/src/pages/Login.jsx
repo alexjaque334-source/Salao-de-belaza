@@ -38,8 +38,12 @@ export default function Login() {
           shop_code: form.shop_code, name: form.name, email: form.email,
           password: form.password, phone: form.phone,
         });
-        toast.success("Conta criada com sucesso!");
-        goAfter(data);
+        if (data.status === "verification_required") {
+          toast.success(data.message || "Verifique seu e-mail para ativar a conta.");
+          setMode("login");
+        } else {
+          goAfter(data);
+        }
       } else {
         const { data } = await api.post("/auth/login", {
           shop_code: form.shop_code, email: form.email, password: form.password,

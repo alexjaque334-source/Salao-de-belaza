@@ -215,7 +215,10 @@ def _decode_token(request: Request) -> dict:
     if not token:
         raise HTTPException(status_code=401, detail="Não autenticado")
     try:
-        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        if payload.get("type") != "access" or not payload.get("sub"):
+            raise HTTPException(status_code=401, detail="Token inválido")
+        return payload
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Sessão expirada")
     except jwt.InvalidTokenError:
@@ -226,7 +229,7 @@ async def get_current_user_raw(request: Request) -> dict:
     payload = _decode_token(request)
     if payload.get("kind") == "super_admin":
         raise HTTPException(status_code=403, detail="Use o painel da plataforma")
-    user = await db.users.find_one({"_id": ObjectId(payload["sub"])})
+    user = await db.users.find_one({"_id": safe_object_id(payload["sub"], "Token")})
     if not user:
         raise HTTPException(status_code=401, detail="Usuário não encontrado")
     if not user.get("shop_id"):
@@ -261,7 +264,7 @@ async def get_super_admin(request: Request) -> dict:
     payload = _decode_token(request)
     if payload.get("kind") != "super_admin":
         raise HTTPException(status_code=403, detail="Acesso restrito à plataforma")
-    admin = await db.platform_admins.find_one({"_id": ObjectId(payload["sub"])})
+    admin = await db.platform_admins.find_one({"_id": safe_object_id(payload["sub"], "Token")})
     if not admin:
         raise HTTPException(status_code=401, detail="Super admin não encontrado")
     return admin

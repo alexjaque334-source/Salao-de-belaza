@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
-  ShieldCheck, LogOut, Search, CheckCircle2, XCircle, Ban, RotateCcw, History, Store,
+  ShieldCheck, LogOut, Search, CheckCircle2, XCircle, Ban, RotateCcw, History, Store, Plus, Pencil, Power,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { platformApi } from "@/lib/platformApi";
@@ -26,6 +26,10 @@ export default function PlatformDashboard() {
   const [reasonModal, setReasonModal] = useState(null); // {shop, action, status, label}
   const [reason, setReason] = useState("");
   const [historyShop, setHistoryShop] = useState(null);
+  const [section, setSection] = useState("shops");
+  const [plans, setPlans] = useState([]);
+  const [planModal, setPlanModal] = useState(null);
+  const [planForm, setPlanForm] = useState({ name: "", monthly_price: "", description: "", max_professionals: 1, max_services: 1, active: true });
 
   const load = async () => {
     try {
@@ -43,6 +47,46 @@ export default function PlatformDashboard() {
     }
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [filter]);
+
+  const loadPlans = async () => {
+    try {
+      const r = await platformApi.get("/platform/plans");
+      setPlans(r.data);
+    } catch (e) { toast.error(apiError(e)); }
+  };
+  useEffect(() => { if (section === "plans") loadPlans(); /* eslint-disable-next-line */ }, [section]);
+
+  const openPlan = (plan = null) => {
+    setPlanForm(plan ? {
+      name: plan.name, monthly_price: plan.monthly_price, description: plan.description || "",
+      max_professionals: plan.max_professionals, max_services: plan.max_services, active: plan.active,
+    } : { name: "", monthly_price: "", description: "", max_professionals: 1, max_services: 1, active: true });
+    setPlanModal(plan || {});
+  };
+
+  const savePlan = async () => {
+    const payload = {
+      ...planForm,
+      monthly_price: Number(planForm.monthly_price),
+      max_professionals: Number(planForm.max_professionals),
+      max_services: Number(planForm.max_services),
+    };
+    try {
+      if (planModal?.id) await platformApi.put(`/platform/plans/${planModal.id}`, payload);
+      else await platformApi.post("/platform/plans", payload);
+      toast.success(planModal?.id ? "Plano atualizado" : "Plano criado");
+      setPlanModal(null);
+      loadPlans();
+    } catch (e) { toast.error(apiError(e)); }
+  };
+
+  const togglePlan = async (plan) => {
+    try {
+      await platformApi.patch(`/platform/plans/${plan.id}/status`, { active: !plan.active });
+      toast.success(`Plano ${plan.active ? "desativado" : "ativado"}`);
+      loadPlans();
+    } catch (e) { toast.error(apiError(e)); }
+  };
 
   const act = async (shop, endpoint, action, body = {}) => {
     try {
@@ -82,6 +126,12 @@ export default function PlatformDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto p-4 sm:p-8">
+        <div className="flex gap-2 mb-6">
+          <button onClick={() => setSection("shops")} className={section === "shops" ? btnPrimary : btnSecondary}>Barbearias</button>
+          <button onClick={() => setSection("plans")} className={section === "plans" ? btnPrimary : btnSecondary}>Planos</button>
+        </div>
+
+        {section === "shops" ? <>
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6" data-testid="platform-stats">
           <StatCard label="Total" value={stats.total} cls="" />
           <StatCard label="Ativas" value={stats.active} cls="text-emerald-400" />
@@ -155,8 +205,49 @@ export default function PlatformDashboard() {
           </div>
         </div>
 
-        <p className="text-xs text-muted-foreground mt-6">Planos de assinatura e cobrança: em breve (próxima fase).</p>
+        </> : <>
+          <div className="flex items-center justify-between mb-5">
+            <div><h2 className="font-display text-2xl font-extrabold">Planos da plataforma</h2><p className="text-sm text-muted-foreground mt-1">Defina preços e limites oferecidos às barbearias.</p></div>
+            <button onClick={() => openPlan()} className={btnPrimary}><Plus className="h-4 w-4" /> Novo Plano</button>
+          </div>
+          <div className={card + " overflow-x-auto"}>
+            <table className="w-full text-sm">
+              <thead><tr className="text-left text-muted-foreground border-b border-border">
+                <th className="px-5 py-3">Plano</th><th className="px-5 py-3">Mensalidade</th><th className="px-5 py-3">Profissionais</th><th className="px-5 py-3">Serviços</th><th className="px-5 py-3">Status</th><th className="px-5 py-3 text-right">Ações</th>
+              </tr></thead>
+              <tbody>
+                {plans.length === 0 && <tr><td colSpan={6} className="px-5 py-10 text-center text-muted-foreground">Nenhum plano cadastrado.</td></tr>}
+                {plans.map((p) => <tr key={p.id} className="border-b border-border/50">
+                  <td className="px-5 py-3"><div className="font-semibold">{p.name}</div><div className="text-xs text-muted-foreground">{p.description || "—"}</div></td>
+                  <td className="px-5 py-3">R$ {Number(p.monthly_price).toFixed(2).replace(".", ",")}</td>
+                  <td className="px-5 py-3">{p.max_professionals}</td><td className="px-5 py-3">{p.max_services}</td>
+                  <td className="px-5 py-3"><span className={badge(p.active ? STATUS_META.active.cls : STATUS_META.suspended.cls)}>{p.active ? "Ativo" : "Inativo"}</span></td>
+                  <td className="px-5 py-3"><div className="flex justify-end gap-1">
+                    <button onClick={() => openPlan(p)} className="p-2 rounded-lg hover:bg-secondary" title="Editar"><Pencil className="h-4 w-4" /></button>
+                    <button onClick={() => togglePlan(p)} className="p-2 rounded-lg hover:bg-secondary" title={p.active ? "Desativar" : "Ativar"}><Power className="h-4 w-4" /></button>
+                  </div></td>
+                </tr>)}
+              </tbody>
+            </table>
+          </div>
+        </>}
       </main>
+
+      <Dialog open={!!planModal} onOpenChange={(o) => !o && setPlanModal(null)}>
+        <DialogContent className="max-w-lg bg-card border-border">
+          <DialogHeader><DialogTitle className="font-display text-xl">{planModal?.id ? "Editar Plano" : "Novo Plano"}</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div><label className="text-sm font-medium">Nome</label><input value={planForm.name} onChange={(e) => setPlanForm({...planForm, name:e.target.value})} className={input + " mt-1"} /></div>
+            <div><label className="text-sm font-medium">Descrição</label><textarea value={planForm.description} onChange={(e) => setPlanForm({...planForm, description:e.target.value})} className={input + " mt-1 min-h-[80px]"} /></div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div><label className="text-sm font-medium">Mensalidade (R$)</label><input type="number" min="0" step="0.01" value={planForm.monthly_price} onChange={(e) => setPlanForm({...planForm, monthly_price:e.target.value})} className={input + " mt-1"} /></div>
+              <div><label className="text-sm font-medium">Profissionais</label><input type="number" min="1" value={planForm.max_professionals} onChange={(e) => setPlanForm({...planForm, max_professionals:e.target.value})} className={input + " mt-1"} /></div>
+              <div><label className="text-sm font-medium">Serviços</label><input type="number" min="1" value={planForm.max_services} onChange={(e) => setPlanForm({...planForm, max_services:e.target.value})} className={input + " mt-1"} /></div>
+            </div>
+            <div className="flex justify-end gap-2"><button onClick={() => setPlanModal(null)} className={btnSecondary}>Cancelar</button><button onClick={savePlan} className={btnPrimary}>Salvar</button></div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!reasonModal} onOpenChange={(o) => !o && setReasonModal(null)}>
         <DialogContent className="max-w-md bg-card border-border">

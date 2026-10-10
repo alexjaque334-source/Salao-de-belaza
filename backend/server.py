@@ -392,8 +392,7 @@ class SubscriptionIn(BaseModel):
 
 class ClientIn(BaseModel):
     name: str
-    email: EmailStr
-    phone: Optional[str] = ""
+    phone: str
     notes: Optional[str] = ""
 
 
@@ -870,34 +869,23 @@ async def list_clients(admin: dict = Depends(require_admin)):
 @api_router.post("/clients")
 async def create_client(data: ClientIn, admin: dict = Depends(require_admin)):
     sid = admin["shop_id"]
-    email = data.email.lower()
-    if await db.users.find_one({"shop_id": sid, "email": email}):
-        raise HTTPException(400, "E-mail já cadastrado nesta barbearia")
+    name = data.name.strip()
+    phone = _only_digits(data.phone)
+    if not name:
+        raise HTTPException(400, "Nome é obrigatório")
+    if len(phone) < 10 or len(phone) > 13:
+        raise HTTPException(400, "Telefone inválido")
+    if await db.users.find_one({"shop_id": sid, "role": "client", "phone_normalized": phone}):
+        raise HTTPException(409, "Já existe um cliente com este telefone nesta barbearia")
 
-    activation_code = secrets.token_urlsafe(32)
-    activation_digest = hashlib.sha256(activation_code.encode("utf-8")).hexdigest()
-    expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
     doc = {
-        "email": email,
-        "password_hash": hash_password(secrets.token_urlsafe(48)),
-        "name": data.name, "role": "client", "phone": data.phone, "shop_id": sid,
-        "points": 0, "total_spend": 0, "preferred_barber": "", "notes": data.notes,
-        "activation_pending": True,
-        "activation_token_hash": activation_digest,
-        "activation_expires_at": expires_at.isoformat(),
+        "name": name, "role": "client", "phone": data.phone.strip(),
+        "phone_normalized": phone, "shop_id": sid, "crm_only": True,
+        "points": 0, "total_spend": 0, "preferred_barber": "", "notes": (data.notes or "").strip(),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     res = await db.users.insert_one(doc)
     doc["_id"] = res.inserted_id
-    shop = await db.shops.find_one({"_id": ObjectId(sid)})
-    sent = await email_service.safe_send_activation_invite({
-        "client_email": email, "client_name": data.name,
-        "shop_name": shop["name"] if shop else "BarberStudio",
-        "token": activation_code,
-    })
-    if not sent:
-        await db.users.delete_one({"_id": res.inserted_id, "shop_id": sid})
-        raise HTTPException(status_code=503, detail="Não foi possível enviar o convite de ativação. Tente novamente.")
     return serialize_user(doc)
 
 
@@ -940,9 +928,24 @@ async def update_client(client_id: str, data: ClientIn, admin: dict = Depends(re
     d = await db.users.find_one({"_id": safe_object_id(client_id, "Cliente"), "shop_id": admin["shop_id"]})
     if not d:
         raise HTTPException(404, "Cliente não encontrado")
-    await db.users.update_one({"_id": safe_object_id(client_id, "Cliente")},
-                              {"$set": {"name": data.name, "phone": data.phone, "notes": data.notes}})
-    d = await db.users.find_one({"_id": safe_object_id(client_id, "Cliente")})
+    name = data.name.strip()
+    phone = _only_digits(data.phone)
+    if not name:
+        raise HTTPException(400, "Nome é obrigatório")
+    if len(phone) < 10 or len(phone) > 13:
+        raise HTTPException(400, "Telefone inválido")
+    duplicate = await db.users.find_one({
+        "shop_id": admin["shop_id"], "role": "client", "phone_normalized": phone,
+        "_id": {"$ne": d["_id"]},
+    })
+    if duplicate:
+        raise HTTPException(409, "Já existe um cliente com este telefone nesta barbearia")
+    await db.users.update_one(
+        {"_id": d["_id"], "shop_id": admin["shop_id"]},
+        {"$set": {"name": name, "phone": data.phone.strip(), "phone_normalized": phone,
+                  "notes": (data.notes or "").strip()}},
+    )
+    d = await db.users.find_one({"_id": d["_id"], "shop_id": admin["shop_id"]})
     return serialize_user(d)
 
 

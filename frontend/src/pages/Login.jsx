@@ -34,9 +34,6 @@ export default function Login() {
         setPending({ code: data.shop_code, message: data.message });
         toast.success("Solicitação enviada!");
       } else {
-          goAfter(data);
-        }
-      } else {
         const { data } = await api.post("/auth/login", {
           shop_code: form.shop_code, email: form.email, password: form.password,
         });

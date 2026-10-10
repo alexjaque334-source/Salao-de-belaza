@@ -20,10 +20,14 @@ export function BookingWizard({ isAdmin = false, onBooked }) {
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  const loadClients = () => {
+    if (isAdmin) api.get("/clients").then((r) => setClients(r.data)).catch(() => {});
+  };
+
   useEffect(() => {
     api.get("/barbers").then((r) => setBarbers(r.data.filter((b) => b.active)));
     api.get("/services").then((r) => setServices(r.data.filter((s) => s.active !== false)));
-    if (isAdmin) api.get("/clients").then((r) => setClients(r.data)).catch(() => {});
+    loadClients();
   }, [isAdmin]);
 
   useEffect(() => {
@@ -63,6 +67,11 @@ export function BookingWizard({ isAdmin = false, onBooked }) {
       setTime("");
       const r = await api.get(`/availability?barber_id=${barberId}&date=${date}`);
       setSlots(r.data.slots);
+      if (isAdmin) {
+        loadClients();
+        setWalkinName("");
+        setWalkinPhone("");
+      }
       onBooked && onBooked();
     } catch (err) {
       toast.error(apiError(err));

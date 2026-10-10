@@ -307,8 +307,8 @@ class PlatformPlanIn(BaseModel):
     name: str
     monthly_price: float = Field(ge=0)
     description: Optional[str] = ""
-    max_professionals: int = Field(default=1, ge=1)
-    max_services: int = Field(default=1, ge=1)
+    max_professionals: Optional[int] = Field(default=1, ge=1)
+    max_services: Optional[int] = Field(default=1, ge=1)
     max_client_plans: Optional[int] = Field(default=1, ge=1)
     pdf_reports: bool = False
     active: bool = True
@@ -1548,6 +1548,26 @@ async def seed():
         await db.users.create_index([("shop_id", 1), ("email", 1)], unique=True)
     except Exception as e:
         logger.warning(f"Index setup: {e}")
+
+    # Commercial BarberStudio plans. Existing plans with these names are aligned
+    # to the current offer; custom plans created by the Super Admin are preserved.
+    commercial_plans = [
+        {"name": "Essencial", "monthly_price": 59.90, "description": "Para barbearias pequenas.",
+         "max_professionals": 3, "max_services": 7, "max_client_plans": 5, "pdf_reports": False},
+        {"name": "Profissional", "monthly_price": 99.90, "description": "Para barbearias em crescimento.",
+         "max_professionals": 5, "max_services": 10, "max_client_plans": 7, "pdf_reports": False},
+        {"name": "Premium", "monthly_price": 149.90, "description": "Recursos e cadastros sem limites.",
+         "max_professionals": None, "max_services": None, "max_client_plans": None, "pdf_reports": True},
+    ]
+    now = datetime.now(timezone.utc).isoformat()
+    for item in commercial_plans:
+        normalized = item["name"].lower()
+        await db.platform_plans.update_one(
+            {"name_normalized": normalized},
+            {"$set": {**item, "name_normalized": normalized, "active": True, "updated_at": now},
+             "$setOnInsert": {"created_at": now}},
+            upsert=True,
+        )
 
     # Super Admin (platform owner), idempotent: created only once, never reset here.
     sa_email = os.environ.get("SUPERADMIN_EMAIL", "").lower()

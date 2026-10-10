@@ -656,6 +656,18 @@ async def resolve_shop(code: str):
     return {"code": shop["code"], "name": shop["name"]}
 
 
+@api_router.get("/shop/public-link")
+async def shop_public_link(admin: dict = Depends(require_admin)):
+    shop = await db.shops.find_one({"_id": safe_object_id(admin["shop_id"], "Barbearia")})
+    if not shop:
+        raise HTTPException(404, "Barbearia não encontrada")
+    slug = shop.get("public_slug")
+    if not slug:
+        slug = await unique_shop_slug(shop.get("name", "barbearia"))
+        await db.shops.update_one({"_id": shop["_id"]}, {"$set": {"public_slug": slug}})
+    return {"slug": slug, "path": f"/agendar/{slug}"}
+
+
 # ---------------- WhatsApp integration ----------------
 @api_router.get("/integrations/whatsapp")
 async def get_whatsapp_integration(admin: dict = Depends(require_admin)):

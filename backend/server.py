@@ -309,6 +309,8 @@ class PlatformPlanIn(BaseModel):
     description: Optional[str] = ""
     max_professionals: int = Field(default=1, ge=1)
     max_services: int = Field(default=1, ge=1)
+    max_client_plans: Optional[int] = Field(default=1, ge=1)
+    pdf_reports: bool = False
     active: bool = True
 
 
@@ -560,10 +562,13 @@ async def save_whatsapp_integration(data: WhatsAppIntegrationIn, admin: dict = D
 
 # ---------------- Platform plan limits ----------------
 async def _shop_platform_plan(shop_id):
-    shop = await db.shops.find_one({"_id": shop_id})
+    shop_oid = safe_object_id(shop_id, "Barbearia") if isinstance(shop_id, str) else shop_id
+    shop = await db.shops.find_one({"_id": shop_oid})
     if not shop or not shop.get("platform_plan_id"):
         return None
-    return await db.platform_plans.find_one({"_id": shop["platform_plan_id"], "active": {"$ne": False}})
+    # The commercial plan defines limits even if billing is pending/suspended.
+    # Billing status controls access separately; it must not silently remove limits.
+    return await db.platform_plans.find_one({"_id": shop["platform_plan_id"]})
 
 
 async def _enforce_platform_limit(shop_id, resource: str):
@@ -574,10 +579,14 @@ async def _enforce_platform_limit(shop_id, resource: str):
         limit = plan.get("max_professionals")
         current = await db.barbers.count_documents({"shop_id": shop_id, "active": {"$ne": False}})
         label = "profissionais"
-    else:
+    elif resource == "services":
         limit = plan.get("max_services")
         current = await db.services.count_documents({"shop_id": shop_id, "active": {"$ne": False}})
         label = "serviços"
+    else:
+        limit = plan.get("max_client_plans")
+        current = await db.plans.count_documents({"shop_id": shop_id})
+        label = "planos de assinatura para clientes"
     if limit is not None and current >= limit:
         raise HTTPException(
             status_code=403,
@@ -785,10 +794,29 @@ async def create_appointment(data: AppointmentIn, user: dict = Depends(get_curre
         client_phone = cust.get("phone", "")
         client_email = cust.get("email", "")
     elif user["role"] == "admin" and data.client_name:
-        # Walk-in: manual booking for a client without an account.
-        client_id = None
+        # A manual booking also feeds the shop CRM, so the customer is available
+        # to every barber/admin of this same barbershop on future appointments.
         client_name = data.client_name.strip()
         client_phone = (data.client_phone or "").strip()
+        phone_normalized = _only_digits(client_phone)
+        cust = None
+        if 10 <= len(phone_normalized) <= 13:
+            cust = await db.users.find_one({
+                "shop_id": sid, "role": "client", "phone_normalized": phone_normalized
+            })
+        if not cust:
+            client_doc = {
+                "name": client_name, "role": "client", "phone": client_phone,
+                "phone_normalized": phone_normalized, "shop_id": sid, "crm_only": True,
+                "points": 0, "total_spend": 0, "preferred_barber": "", "notes": "",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            result = await db.users.insert_one(client_doc)
+            client_id = oid(result.inserted_id)
+        else:
+            client_id = oid(cust["_id"])
+            client_name = cust.get("name", client_name)
+            client_phone = cust.get("phone", client_phone)
         client_email = ""
     elif user["role"] == "admin":
         raise HTTPException(400, "Informe o cliente cadastrado ou o nome do cliente avulso")
@@ -956,6 +984,7 @@ async def list_plans(user: dict = Depends(get_current_user)):
 
 @api_router.post("/plans")
 async def create_plan(data: PlanIn, admin: dict = Depends(require_admin)):
+    await _enforce_platform_limit(admin["shop_id"], "client_plans")
     doc = data.model_dump()
     doc["shop_id"] = admin["shop_id"]
     out = dict(doc)
@@ -1076,6 +1105,15 @@ async def dashboard_stats(admin: dict = Depends(require_admin)):
 
 
 # ---------------- Barber Reports ----------------
+@api_router.get("/reports/capabilities")
+async def report_capabilities(admin: dict = Depends(require_admin)):
+    plan = await _shop_platform_plan(admin["shop_id"])
+    return {
+        "pdf_reports": bool(plan and plan.get("pdf_reports", False)),
+        "platform_plan_name": plan.get("name", "") if plan else "",
+    }
+
+
 @api_router.get("/reports/barbers")
 async def barber_report(month: Optional[str] = None, admin: dict = Depends(require_admin)):
     sid = admin["shop_id"]
@@ -1387,6 +1425,8 @@ def _platform_plan_summary(plan: dict) -> dict:
         "description": plan.get("description", ""),
         "max_professionals": plan.get("max_professionals", 1),
         "max_services": plan.get("max_services", 1),
+        "max_client_plans": plan.get("max_client_plans"),
+        "pdf_reports": plan.get("pdf_reports", False),
         "active": plan.get("active", True),
         "created_at": plan.get("created_at"),
         "updated_at": plan.get("updated_at"),
@@ -1414,6 +1454,8 @@ async def platform_create_plan(data: PlatformPlanIn, _: dict = Depends(get_super
         "description": (data.description or "").strip(),
         "max_professionals": data.max_professionals,
         "max_services": data.max_services,
+        "max_client_plans": data.max_client_plans,
+        "pdf_reports": data.pdf_reports,
         "active": data.active,
         "created_at": now,
         "updated_at": now,
@@ -1445,6 +1487,8 @@ async def platform_update_plan(plan_id: str, data: PlatformPlanIn, _: dict = Dep
         "description": (data.description or "").strip(),
         "max_professionals": data.max_professionals,
         "max_services": data.max_services,
+        "max_client_plans": data.max_client_plans,
+        "pdf_reports": data.pdf_reports,
         "active": data.active,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }

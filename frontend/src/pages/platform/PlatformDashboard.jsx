@@ -29,6 +29,8 @@ export default function PlatformDashboard() {
   const [section, setSection] = useState("shops");
   const [plans, setPlans] = useState([]);
   const [planModal, setPlanModal] = useState(null);
+  const [assignShop, setAssignShop] = useState(null);
+  const [selectedPlanId, setSelectedPlanId] = useState("");
   const [planForm, setPlanForm] = useState({ name: "", monthly_price: "", description: "", max_professionals: 1, max_services: 1, active: true });
 
   const load = async () => {
@@ -77,6 +79,22 @@ export default function PlatformDashboard() {
       toast.success(planModal?.id ? "Plano atualizado" : "Plano criado");
       setPlanModal(null);
       loadPlans();
+    } catch (e) { toast.error(apiError(e)); }
+  };
+
+  const openAssignPlan = async (shop) => {
+    if (!plans.length) await loadPlans();
+    setSelectedPlanId(shop.platform_plan_id || "");
+    setAssignShop(shop);
+  };
+
+  const assignPlan = async () => {
+    if (!selectedPlanId) return toast.error("Selecione um plano");
+    try {
+      await platformApi.put(`/platform/shops/${assignShop.id}/plan`, { plan_id: selectedPlanId });
+      toast.success(`Plano atualizado para ${assignShop.name}`);
+      setAssignShop(null);
+      load();
     } catch (e) { toast.error(apiError(e)); }
   };
 
@@ -164,11 +182,12 @@ export default function PlatformDashboard() {
                   <th className="px-5 py-3 font-semibold">Responsável</th>
                   <th className="px-5 py-3 font-semibold">CPF/CNPJ</th>
                   <th className="px-5 py-3 font-semibold">Status</th>
+                  <th className="px-5 py-3 font-semibold">Plano</th>
                   <th className="px-5 py-3 font-semibold text-right">Ações</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.length === 0 && <tr><td colSpan={5} className="px-5 py-10 text-center text-muted-foreground">Nenhuma barbearia.</td></tr>}
+                {filtered.length === 0 && <tr><td colSpan={6} className="px-5 py-10 text-center text-muted-foreground">Nenhuma barbearia.</td></tr>}
                 {filtered.map((s) => {
                   const m = STATUS_META[s.status] || STATUS_META.pending;
                   return (
@@ -180,6 +199,7 @@ export default function PlatformDashboard() {
                       <td className="px-5 py-3"><div>{s.responsible_name || "—"}</div><div className="text-xs text-muted-foreground">{s.email}</div></td>
                       <td className="px-5 py-3 font-mono text-xs">{s.cpf_cnpj || "—"}</td>
                       <td className="px-5 py-3"><span className={badge(m.cls)}>{m.label}</span></td>
+                      <td className="px-5 py-3"><button onClick={() => openAssignPlan(s)} className="text-left hover:text-amber-400 transition-colors"><div className="font-medium">{s.platform_plan_name || "Sem plano"}</div><div className="text-xs text-muted-foreground">{s.subscription_status === "active" ? "Assinatura ativa" : "Definir plano"}</div></button></td>
                       <td className="px-5 py-3">
                         <div className="flex items-center justify-end gap-1 flex-wrap">
                           {s.status === "pending" && (
@@ -232,6 +252,21 @@ export default function PlatformDashboard() {
           </div>
         </>}
       </main>
+
+      <Dialog open={!!assignShop} onOpenChange={(o) => !o && setAssignShop(null)}>
+        <DialogContent className="max-w-md bg-card border-border">
+          <DialogHeader><DialogTitle className="font-display text-xl">Plano — {assignShop?.name}</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div><label className="text-sm font-medium">Plano da plataforma</label>
+              <select value={selectedPlanId} onChange={(e) => setSelectedPlanId(e.target.value)} className={input + " mt-1"}>
+                <option value="">Selecione um plano</option>
+                {plans.filter((p) => p.active).map((p) => <option key={p.id} value={p.id}>{p.name} — R$ {Number(p.monthly_price).toFixed(2).replace(".", ",")}/mês</option>)}
+              </select>
+            </div>
+            <div className="flex justify-end gap-2"><button onClick={() => setAssignShop(null)} className={btnSecondary}>Cancelar</button><button onClick={assignPlan} className={btnPrimary}>Salvar plano</button></div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!planModal} onOpenChange={(o) => !o && setPlanModal(null)}>
         <DialogContent className="max-w-lg bg-card border-border">

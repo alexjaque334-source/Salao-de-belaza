@@ -2,7 +2,7 @@ import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import {
   LayoutDashboard, CalendarDays, Users, Scissors, Crown, BadgeDollarSign,
-  LogOut, Menu, X, BarChart3, ClipboardList, MessageCircle,
+  LogOut, Menu, X, BarChart3, ClipboardList,
 } from "lucide-react";
 import { useState } from "react";
 import { ShopStatusScreen } from "@/components/ShopStatusScreen";
@@ -16,7 +16,6 @@ const adminNav = [
   { to: "/fidelizados", label: "Fidelizados", icon: Crown, testid: "nav-fidelizados-tab" },
   { to: "/planos", label: "Planos", icon: BadgeDollarSign, testid: "nav-planos-tab" },
   { to: "/relatorios", label: "Relatórios", icon: BarChart3, testid: "nav-relatorios-tab" },
-  { to: "/whatsapp", label: "WhatsApp", icon: MessageCircle, testid: "nav-whatsapp-tab" },
 ];
 
 

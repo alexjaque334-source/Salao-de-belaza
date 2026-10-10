@@ -80,9 +80,9 @@ def tier_for_points(points: int) -> str:
     return "Bronze"
 
 
-def serialize_user(doc) -> dict:
+def serialize_user(doc, *, include_private_notes: bool = False) -> dict:
     points = doc.get("points", 0)
-    return {
+    data = {
         "id": oid(doc["_id"]),
         "email": doc.get("email"),
         "name": doc.get("name"),
@@ -92,10 +92,12 @@ def serialize_user(doc) -> dict:
         "tier": tier_for_points(points),
         "total_spend": doc.get("total_spend", 0),
         "preferred_barber": doc.get("preferred_barber", ""),
-        "notes": doc.get("notes", ""),
         "shop_id": doc.get("shop_id"),
         "created_at": doc.get("created_at"),
     }
+    if include_private_notes:
+        data["notes"] = doc.get("notes", "")
+    return data
 
 
 async def _shop_fields(user: dict) -> dict:
@@ -499,11 +501,11 @@ async def login(data: LoginIn, request: Request):
     if not shop or not user or not verify_password(data.password, user["password_hash"]):
         await bump_attempt(ident)
         raise HTTPException(status_code=401, detail="Barbearia, e-mail ou senha inválidos")
-    if user.get("activation_pending"):
-        raise HTTPException(status_code=403, detail="Ative sua conta pelo link enviado ao seu e-mail.")
-    # Clients cannot sign in to a non-active shop; owners can (to see the status screen).
-    if user["role"] == "client" and shop_status(shop) != "active":
-        raise HTTPException(status_code=403, detail="Esta barbearia não está disponível no momento.")
+    # Client accounts are kept only as CRM records for now; the customer portal is disabled.
+    if user.get("role") == "client":
+        raise HTTPException(status_code=403, detail="Acesso de clientes não está disponível.")
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Perfil sem acesso ao painel.")
     await clear_attempts(ident)
     return await auth_response(user)
 
@@ -861,7 +863,7 @@ async def list_clients(admin: dict = Depends(require_admin)):
     for d in docs:
         count = await db.appointments.count_documents({"client_id": oid(d["_id"]), "shop_id": sid})
         sub = await db.subscriptions.find_one({"client_id": oid(d["_id"]), "shop_id": sid, "status": "Ativo"})
-        u = serialize_user(d)
+        u = serialize_user(d, include_private_notes=True)
         u["visits"] = count
         u["plan_name"] = sub["plan_name"] if sub else None
         out.append(u)
@@ -888,7 +890,7 @@ async def create_client(data: ClientIn, admin: dict = Depends(require_admin)):
     }
     res = await db.users.insert_one(doc)
     doc["_id"] = res.inserted_id
-    return serialize_user(doc)
+    return serialize_user(doc, include_private_notes=True)
 
 
 @api_router.put("/clients/{client_id}")
@@ -914,7 +916,7 @@ async def update_client(client_id: str, data: ClientIn, admin: dict = Depends(re
                   "notes": (data.notes or "").strip()}},
     )
     d = await db.users.find_one({"_id": d["_id"], "shop_id": admin["shop_id"]})
-    return serialize_user(d)
+    return serialize_user(d, include_private_notes=True)
 
 
 @api_router.patch("/clients/{client_id}/loyalty")
@@ -922,9 +924,13 @@ async def set_loyalty(client_id: str, data: LoyaltyIn, admin: dict = Depends(req
     d = await db.users.find_one({"_id": safe_object_id(client_id, "Cliente"), "shop_id": admin["shop_id"]})
     if not d:
         raise HTTPException(404, "Cliente não encontrado")
-    await db.users.update_one({"_id": safe_object_id(client_id, "Cliente")}, {"$set": {"points": max(0, data.points)}})
-    d = await db.users.find_one({"_id": safe_object_id(client_id, "Cliente")})
-    return serialize_user(d)
+    client_oid = safe_object_id(client_id, "Cliente")
+    await db.users.update_one(
+        {"_id": client_oid, "shop_id": admin["shop_id"], "role": "client"},
+        {"$set": {"points": max(0, data.points)}},
+    )
+    d = await db.users.find_one({"_id": client_oid, "shop_id": admin["shop_id"], "role": "client"})
+    return serialize_user(d, include_private_notes=True)
 
 
 @api_router.post("/clients/{client_id}/redeem")
@@ -934,7 +940,10 @@ async def redeem(client_id: str, admin: dict = Depends(require_admin)):
         raise HTTPException(404, "Cliente não encontrado")
     if d.get("points", 0) < 100:
         raise HTTPException(400, "Pontos insuficientes (mínimo 100)")
-    await db.users.update_one({"_id": safe_object_id(client_id, "Cliente")}, {"$inc": {"points": -100}})
+    await db.users.update_one(
+        {"_id": safe_object_id(client_id, "Cliente"), "shop_id": admin["shop_id"], "role": "client"},
+        {"$inc": {"points": -100}},
+    )
     return {"ok": True, "message": "Recompensa resgatada: 1 corte grátis"}
 
 
@@ -960,8 +969,11 @@ async def update_plan(plan_id: str, data: PlanIn, admin: dict = Depends(require_
     d = await db.plans.find_one({"_id": safe_object_id(plan_id, "Plano"), "shop_id": admin["shop_id"]})
     if not d:
         raise HTTPException(404, "Plano não encontrado")
-    await db.plans.update_one({"_id": safe_object_id(plan_id, "Plano")}, {"$set": data.model_dump()})
-    d = await db.plans.find_one({"_id": safe_object_id(plan_id, "Plano")})
+    await db.plans.update_one(
+        {"_id": safe_object_id(plan_id, "Plano"), "shop_id": admin["shop_id"]},
+        {"$set": data.model_dump()},
+    )
+    d = await db.plans.find_one({"_id": safe_object_id(plan_id, "Plano"), "shop_id": admin["shop_id"]})
     return {"id": oid(d["_id"]), **{k: v for k, v in d.items() if k != "_id"}}
 
 
@@ -1324,14 +1336,15 @@ async def _apply_provider_subscription_event(shop: dict, event: PlatformSubscrip
 
 @api_router.get("/platform/shops/{shop_id}")
 async def platform_shop_detail(shop_id: str, _: dict = Depends(get_super_admin)):
-    s = await db.shops.find_one({"_id": ObjectId(shop_id)})
+    s = await db.shops.find_one({"_id": safe_object_id(shop_id, "Barbearia")})
     if not s:
         raise HTTPException(404, "Barbearia não encontrada")
     return _shop_admin_summary(s, full=True)
 
 
 async def _decide(shop_id: str, new_status: str, action: str, admin: dict, reason: str):
-    s = await db.shops.find_one({"_id": ObjectId(shop_id)})
+    shop_oid = safe_object_id(shop_id, "Barbearia")
+    s = await db.shops.find_one({"_id": shop_oid})
     if not s:
         raise HTTPException(404, "Barbearia não encontrada")
     entry = {
@@ -1339,10 +1352,10 @@ async def _decide(shop_id: str, new_status: str, action: str, admin: dict, reaso
         "at": datetime.now(timezone.utc).isoformat(), "reason": (reason or "").strip(),
     }
     await db.shops.update_one(
-        {"_id": ObjectId(shop_id)},
+        {"_id": shop_oid},
         {"$set": {"status": new_status}, "$push": {"decision_history": entry}},
     )
-    s = await db.shops.find_one({"_id": ObjectId(shop_id)})
+    s = await db.shops.find_one({"_id": shop_oid})
     return _shop_admin_summary(s, full=True)
 
 

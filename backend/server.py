@@ -524,6 +524,33 @@ async def resolve_shop(code: str):
     return {"code": shop["code"], "name": shop["name"]}
 
 
+# ---------------- Platform plan limits ----------------
+async def _shop_platform_plan(shop_id):
+    shop = await db.shops.find_one({"_id": shop_id})
+    if not shop or not shop.get("platform_plan_id"):
+        return None
+    return await db.platform_plans.find_one({"_id": shop["platform_plan_id"], "active": {"$ne": False}})
+
+
+async def _enforce_platform_limit(shop_id, resource: str):
+    plan = await _shop_platform_plan(shop_id)
+    if not plan:
+        return
+    if resource == "professionals":
+        limit = plan.get("max_professionals")
+        current = await db.barbers.count_documents({"shop_id": shop_id, "active": {"$ne": False}})
+        label = "profissionais"
+    else:
+        limit = plan.get("max_services")
+        current = await db.services.count_documents({"shop_id": shop_id, "active": {"$ne": False}})
+        label = "serviços"
+    if limit is not None and current >= limit:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Seu plano {plan.get('name', '')} permite até {limit} {label}. Faça upgrade do plano para adicionar mais.",
+        )
+
+
 # ---------------- Barbers ----------------
 @api_router.get("/barbers")
 async def list_barbers(user: dict = Depends(get_current_user)):
@@ -533,6 +560,8 @@ async def list_barbers(user: dict = Depends(get_current_user)):
 
 @api_router.post("/barbers")
 async def create_barber(data: BarberIn, admin: dict = Depends(require_admin)):
+    if data.active:
+        await _enforce_platform_limit(admin["shop_id"], "professionals")
     doc = data.model_dump()
     doc["total_cuts"] = 0
     doc["shop_id"] = admin["shop_id"]
@@ -547,6 +576,8 @@ async def update_barber(barber_id: str, data: BarberIn, admin: dict = Depends(re
     d = await db.barbers.find_one({"_id": ObjectId(barber_id), "shop_id": admin["shop_id"]})
     if not d:
         raise HTTPException(404, "Barbeiro não encontrado")
+    if data.active and not d.get("active", True):
+        await _enforce_platform_limit(admin["shop_id"], "professionals")
     await db.barbers.update_one({"_id": ObjectId(barber_id)}, {"$set": data.model_dump()})
     d = await db.barbers.find_one({"_id": ObjectId(barber_id)})
     return {"id": oid(d["_id"]), **{k: v for k, v in d.items() if k != "_id"}}
@@ -578,6 +609,7 @@ async def list_services(user: dict = Depends(get_current_user)):
 
 @api_router.post("/services")
 async def create_service(data: ServiceIn, admin: dict = Depends(require_admin)):
+    await _enforce_platform_limit(admin["shop_id"], "services")
     doc = data.model_dump()
     doc["shop_id"] = admin["shop_id"]
     out = dict(doc)
@@ -629,6 +661,8 @@ async def change_service_status(
         raise HTTPException(404, "Serviço não encontrado")
 
     new_status = not service.get("active", True)
+    if new_status:
+        await _enforce_platform_limit(admin["shop_id"], "services")
 
     await db.services.update_one(
         {"_id": service["_id"], "shop_id": admin["shop_id"]},

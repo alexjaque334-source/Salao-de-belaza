@@ -165,6 +165,17 @@ export default function PlatformDashboard() {
           <StatCard label="Rejeitadas" value={stats.rejected} cls="text-zinc-400" />
         </div>
 
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <StatCard label="Assinaturas ativas" value={stats.subscriptions_active || 0} cls="text-emerald-400" />
+          <StatCard label="Assinaturas pendentes" value={stats.subscriptions_pending || 0} cls="text-amber-400" />
+          <StatCard label="Assinaturas atrasadas" value={stats.subscriptions_past_due || 0} cls="text-rose-400" />
+          <div className={card + " p-5"}>
+            <div className={overline}>MRR projetado</div>
+            <div className="font-display text-3xl font-extrabold mt-2">R$ {Number(stats.projected_mrr || 0).toFixed(2).replace(".", ",")}</div>
+            <div className="text-xs text-muted-foreground mt-1">Baseado nos planos ativos</div>
+          </div>
+        </div>
+
         <div className="flex flex-wrap items-center gap-3 mb-5">
           <div className="flex flex-wrap gap-2">
             {FILTERS.map(([val, lbl]) => (

@@ -66,6 +66,13 @@ def oid(v) -> str:
     return str(v)
 
 
+def safe_object_id(value, label: str = "ID") -> ObjectId:
+    try:
+        return ObjectId(value)
+    except Exception:
+        raise HTTPException(status_code=400, detail=f"{label} inválido")
+
+
 def tier_for_points(points: int) -> str:
     if points >= 600: return "VIP Black"
     if points >= 300: return "Gold"
@@ -594,19 +601,19 @@ async def create_barber(data: BarberIn, admin: dict = Depends(require_admin)):
 
 @api_router.put("/barbers/{barber_id}")
 async def update_barber(barber_id: str, data: BarberIn, admin: dict = Depends(require_admin)):
-    d = await db.barbers.find_one({"_id": ObjectId(barber_id), "shop_id": admin["shop_id"]})
+    d = await db.barbers.find_one({"_id": safe_object_id(barber_id, "Barbeiro"), "shop_id": admin["shop_id"]})
     if not d:
         raise HTTPException(404, "Barbeiro não encontrado")
     if data.active and not d.get("active", True):
         await _enforce_platform_limit(admin["shop_id"], "professionals")
-    await db.barbers.update_one({"_id": ObjectId(barber_id)}, {"$set": data.model_dump()})
-    d = await db.barbers.find_one({"_id": ObjectId(barber_id)})
+    await db.barbers.update_one({"_id": safe_object_id(barber_id, "Barbeiro")}, {"$set": data.model_dump()})
+    d = await db.barbers.find_one({"_id": safe_object_id(barber_id, "Barbeiro")})
     return {"id": oid(d["_id"]), **{k: v for k, v in d.items() if k != "_id"}}
 
 
 @api_router.delete("/barbers/{barber_id}")
 async def delete_barber(barber_id: str, admin: dict = Depends(require_admin)):
-    res = await db.barbers.delete_one({"_id": ObjectId(barber_id), "shop_id": admin["shop_id"]})
+    res = await db.barbers.delete_one({"_id": safe_object_id(barber_id, "Barbeiro"), "shop_id": admin["shop_id"]})
     if res.deleted_count == 0:
         raise HTTPException(404, "Barbeiro não encontrado")
     return {"ok": True}
@@ -649,7 +656,7 @@ async def update_service(
 
     result = await db.services.update_one(
         {
-            "_id": ObjectId(service_id),
+            "_id": safe_object_id(service_id, "Serviço"),
             "shop_id": admin["shop_id"]
         },
         {
@@ -674,7 +681,7 @@ async def change_service_status(
     admin: dict = Depends(require_admin)
 ):
     service = await db.services.find_one({
-        "_id": ObjectId(service_id),
+        "_id": safe_object_id(service_id, "Serviço"),
         "shop_id": admin["shop_id"]
     })
 
@@ -708,7 +715,7 @@ def gen_slots(start: str, end: str, interval: int = 30):
 
 @api_router.get("/availability")
 async def availability(barber_id: str, date: str, user: dict = Depends(get_current_user)):
-    barber = await db.barbers.find_one({"_id": ObjectId(barber_id), "shop_id": user["shop_id"]})
+    barber = await db.barbers.find_one({"_id": safe_object_id(barber_id, "Barbeiro"), "shop_id": user["shop_id"]})
     if not barber:
         raise HTTPException(404, "Barbeiro não encontrado")
     try:
@@ -745,12 +752,12 @@ async def list_appointments(user: dict = Depends(get_current_user)):
 @api_router.post("/appointments")
 async def create_appointment(data: AppointmentIn, user: dict = Depends(get_current_user)):
     sid = user["shop_id"]
-    barber = await db.barbers.find_one({"_id": ObjectId(data.barber_id), "shop_id": sid})
+    barber = await db.barbers.find_one({"_id": safe_object_id(data.barber_id, "Barbeiro"), "shop_id": sid})
     if not barber:
         raise HTTPException(404, "Barbeiro não encontrado")
 
     service = await db.services.find_one({
-        "_id": ObjectId(data.service_id),
+        "_id": safe_object_id(data.service_id, "Serviço"),
         "shop_id": sid,
         "active": {"$ne": False}
     })
@@ -764,7 +771,7 @@ async def create_appointment(data: AppointmentIn, user: dict = Depends(get_curre
     if exists:
         raise HTTPException(status_code=409, detail="Este horário já está indisponível")
     if user["role"] == "admin" and data.client_id:
-        cust = await db.users.find_one({"_id": ObjectId(data.client_id), "shop_id": sid})
+        cust = await db.users.find_one({"_id": safe_object_id(data.client_id, "Cliente"), "shop_id": sid})
         if not cust:
             raise HTTPException(404, "Cliente não encontrado")
         client_id = data.client_id
@@ -806,10 +813,10 @@ async def create_appointment(data: AppointmentIn, user: dict = Depends(get_curre
 
 @api_router.patch("/appointments/{appt_id}/status")
 async def update_status(appt_id: str, data: StatusIn, admin: dict = Depends(require_admin)):
-    appt = await db.appointments.find_one({"_id": ObjectId(appt_id), "shop_id": admin["shop_id"]})
+    appt = await db.appointments.find_one({"_id": safe_object_id(appt_id, "Agendamento"), "shop_id": admin["shop_id"]})
     if not appt:
         raise HTTPException(404, "Agendamento não encontrado")
-    await db.appointments.update_one({"_id": ObjectId(appt_id)}, {"$set": {"status": data.status}})
+    await db.appointments.update_one({"_id": safe_object_id(appt_id, "Agendamento")}, {"$set": {"status": data.status}})
     if data.status == "Concluído" and appt.get("status") != "Concluído":
         if appt.get("client_id"):
             await db.users.update_one(
@@ -822,12 +829,12 @@ async def update_status(appt_id: str, data: StatusIn, admin: dict = Depends(requ
 
 @api_router.delete("/appointments/{appt_id}")
 async def delete_appointment(appt_id: str, user: dict = Depends(get_current_user)):
-    appt = await db.appointments.find_one({"_id": ObjectId(appt_id), "shop_id": user["shop_id"]})
+    appt = await db.appointments.find_one({"_id": safe_object_id(appt_id, "Agendamento"), "shop_id": user["shop_id"]})
     if not appt:
         raise HTTPException(404, "Agendamento não encontrado")
     if user["role"] != "admin" and appt.get("client_id") != oid(user["_id"]):
         raise HTTPException(403, "Sem permissão")
-    await db.appointments.delete_one({"_id": ObjectId(appt_id)})
+    await db.appointments.delete_one({"_id": safe_object_id(appt_id, "Agendamento")})
     return {"ok": True}
 
 
@@ -917,33 +924,33 @@ async def activate_client(data: ActivateClientIn, request: Request):
 
 @api_router.put("/clients/{client_id}")
 async def update_client(client_id: str, data: ClientIn, admin: dict = Depends(require_admin)):
-    d = await db.users.find_one({"_id": ObjectId(client_id), "shop_id": admin["shop_id"]})
+    d = await db.users.find_one({"_id": safe_object_id(client_id, "Cliente"), "shop_id": admin["shop_id"]})
     if not d:
         raise HTTPException(404, "Cliente não encontrado")
-    await db.users.update_one({"_id": ObjectId(client_id)},
+    await db.users.update_one({"_id": safe_object_id(client_id, "Cliente")},
                               {"$set": {"name": data.name, "phone": data.phone, "notes": data.notes}})
-    d = await db.users.find_one({"_id": ObjectId(client_id)})
+    d = await db.users.find_one({"_id": safe_object_id(client_id, "Cliente")})
     return serialize_user(d)
 
 
 @api_router.patch("/clients/{client_id}/loyalty")
 async def set_loyalty(client_id: str, data: LoyaltyIn, admin: dict = Depends(require_admin)):
-    d = await db.users.find_one({"_id": ObjectId(client_id), "shop_id": admin["shop_id"]})
+    d = await db.users.find_one({"_id": safe_object_id(client_id, "Cliente"), "shop_id": admin["shop_id"]})
     if not d:
         raise HTTPException(404, "Cliente não encontrado")
-    await db.users.update_one({"_id": ObjectId(client_id)}, {"$set": {"points": max(0, data.points)}})
-    d = await db.users.find_one({"_id": ObjectId(client_id)})
+    await db.users.update_one({"_id": safe_object_id(client_id, "Cliente")}, {"$set": {"points": max(0, data.points)}})
+    d = await db.users.find_one({"_id": safe_object_id(client_id, "Cliente")})
     return serialize_user(d)
 
 
 @api_router.post("/clients/{client_id}/redeem")
 async def redeem(client_id: str, admin: dict = Depends(require_admin)):
-    d = await db.users.find_one({"_id": ObjectId(client_id), "shop_id": admin["shop_id"]})
+    d = await db.users.find_one({"_id": safe_object_id(client_id, "Cliente"), "shop_id": admin["shop_id"]})
     if not d:
         raise HTTPException(404, "Cliente não encontrado")
     if d.get("points", 0) < 100:
         raise HTTPException(400, "Pontos insuficientes (mínimo 100)")
-    await db.users.update_one({"_id": ObjectId(client_id)}, {"$inc": {"points": -100}})
+    await db.users.update_one({"_id": safe_object_id(client_id, "Cliente")}, {"$inc": {"points": -100}})
     return {"ok": True, "message": "Recompensa resgatada: 1 corte grátis"}
 
 
@@ -966,17 +973,17 @@ async def create_plan(data: PlanIn, admin: dict = Depends(require_admin)):
 
 @api_router.put("/plans/{plan_id}")
 async def update_plan(plan_id: str, data: PlanIn, admin: dict = Depends(require_admin)):
-    d = await db.plans.find_one({"_id": ObjectId(plan_id), "shop_id": admin["shop_id"]})
+    d = await db.plans.find_one({"_id": safe_object_id(plan_id, "Plano"), "shop_id": admin["shop_id"]})
     if not d:
         raise HTTPException(404, "Plano não encontrado")
-    await db.plans.update_one({"_id": ObjectId(plan_id)}, {"$set": data.model_dump()})
-    d = await db.plans.find_one({"_id": ObjectId(plan_id)})
+    await db.plans.update_one({"_id": safe_object_id(plan_id, "Plano")}, {"$set": data.model_dump()})
+    d = await db.plans.find_one({"_id": safe_object_id(plan_id, "Plano")})
     return {"id": oid(d["_id"]), **{k: v for k, v in d.items() if k != "_id"}}
 
 
 @api_router.delete("/plans/{plan_id}")
 async def delete_plan(plan_id: str, admin: dict = Depends(require_admin)):
-    res = await db.plans.delete_one({"_id": ObjectId(plan_id), "shop_id": admin["shop_id"]})
+    res = await db.plans.delete_one({"_id": safe_object_id(plan_id, "Plano"), "shop_id": admin["shop_id"]})
     if res.deleted_count == 0:
         raise HTTPException(404, "Plano não encontrado")
     return {"ok": True}
@@ -1000,11 +1007,11 @@ async def my_subscription(user: dict = Depends(get_current_user)):
 @api_router.post("/subscriptions")
 async def create_subscription(data: SubscriptionIn, user: dict = Depends(get_current_user)):
     sid = user["shop_id"]
-    plan = await db.plans.find_one({"_id": ObjectId(data.plan_id), "shop_id": sid})
+    plan = await db.plans.find_one({"_id": safe_object_id(data.plan_id, "Plano"), "shop_id": sid})
     if not plan:
         raise HTTPException(404, "Plano não encontrado")
     if user["role"] == "admin" and data.client_id:
-        cust = await db.users.find_one({"_id": ObjectId(data.client_id), "shop_id": sid})
+        cust = await db.users.find_one({"_id": safe_object_id(data.client_id, "Cliente"), "shop_id": sid})
         if not cust:
             raise HTTPException(404, "Cliente não encontrado")
         client_id = data.client_id
@@ -1032,7 +1039,7 @@ async def create_subscription(data: SubscriptionIn, user: dict = Depends(get_cur
 @api_router.delete("/subscriptions/{sub_id}")
 async def cancel_subscription(sub_id: str, admin: dict = Depends(require_admin)):
     res = await db.subscriptions.update_one(
-        {"_id": ObjectId(sub_id), "shop_id": admin["shop_id"]}, {"$set": {"status": "Cancelado"}}
+        {"_id": safe_object_id(sub_id, "Assinatura"), "shop_id": admin["shop_id"]}, {"$set": {"status": "Cancelado"}}
     )
     if res.matched_count == 0:
         raise HTTPException(404, "Assinatura não encontrada")
@@ -1234,7 +1241,7 @@ async def platform_list_shops(status: Optional[str] = None, q: Optional[str] = N
 async def platform_assign_shop_plan(shop_id: str, data: PlatformShopPlanIn, admin: dict = Depends(get_super_admin)):
     try:
         sid = ObjectId(shop_id)
-        pid = ObjectId(data.plan_id)
+        pid = safe_object_id(data.plan_id, "Plano")
     except Exception:
         raise HTTPException(400, "Barbearia ou plano inválido")
     shop = await db.shops.find_one({"_id": sid})
@@ -1422,7 +1429,7 @@ async def platform_create_plan(data: PlatformPlanIn, _: dict = Depends(get_super
 @api_router.put("/platform/plans/{plan_id}")
 async def platform_update_plan(plan_id: str, data: PlatformPlanIn, _: dict = Depends(get_super_admin)):
     try:
-        pid = ObjectId(plan_id)
+        pid = safe_object_id(plan_id, "Plano")
     except Exception:
         raise HTTPException(400, "Plano inválido")
     existing = await db.platform_plans.find_one({"_id": pid})
@@ -1451,7 +1458,7 @@ async def platform_update_plan(plan_id: str, data: PlatformPlanIn, _: dict = Dep
 @api_router.patch("/platform/plans/{plan_id}/status")
 async def platform_plan_status(plan_id: str, data: PlatformPlanStatusIn, _: dict = Depends(get_super_admin)):
     try:
-        pid = ObjectId(plan_id)
+        pid = safe_object_id(plan_id, "Plano")
     except Exception:
         raise HTTPException(400, "Plano inválido")
     if not await db.platform_plans.find_one({"_id": pid}):

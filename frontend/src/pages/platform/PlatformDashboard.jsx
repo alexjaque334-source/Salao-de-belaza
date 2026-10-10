@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
-  ShieldCheck, LogOut, Search, CheckCircle2, XCircle, Ban, RotateCcw, History, Store, Plus, Pencil, Power, LayoutDashboard, CreditCard,
+  ShieldCheck, LogOut, Search, CheckCircle2, XCircle, Ban, RotateCcw, History, Store, Plus, Pencil, Power, Trash2, LayoutDashboard, CreditCard,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { platformApi } from "@/lib/platformApi";
@@ -125,6 +125,16 @@ export default function PlatformDashboard() {
       await platformApi.patch(`/platform/plans/${plan.id}/status`, { active: !plan.active });
       toast.success(`Plano ${plan.active ? "desativado" : "ativado"}`);
       loadPlans();
+    } catch (e) { toast.error(apiError(e)); }
+  };
+
+  const deletePlan = async (plan) => {
+    if (!window.confirm(`Excluir o plano "${plan.name}"? Esta ação não pode ser desfeita.`)) return;
+    try {
+      await platformApi.delete(`/platform/plans/${plan.id}`);
+      toast.success("Plano excluído");
+      loadPlans();
+      load();
     } catch (e) { toast.error(apiError(e)); }
   };
 
@@ -286,6 +296,7 @@ export default function PlatformDashboard() {
                   <td className="px-5 py-3"><div className="flex justify-end gap-1">
                     <button onClick={() => openPlan(p)} className="p-2 rounded-lg hover:bg-secondary" title="Editar"><Pencil className="h-4 w-4" /></button>
                     <button onClick={() => togglePlan(p)} className="p-2 rounded-lg hover:bg-secondary" title={p.active ? "Desativar" : "Ativar"}><Power className="h-4 w-4" /></button>
+                    <button onClick={() => deletePlan(p)} className="p-2 rounded-lg text-rose-400 hover:bg-rose-500/10" title="Excluir"><Trash2 className="h-4 w-4" /></button>
                   </div></td>
                 </tr>)}
               </tbody>

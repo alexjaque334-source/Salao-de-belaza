@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BarChart3, DollarSign, Scissors, TrendingUp, Percent } from "lucide-react";
+import { DollarSign, Scissors, TrendingUp, Percent, FileDown } from "lucide-react";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/PageHeader";
 import { card, overline, badge } from "@/lib/styles";
@@ -16,10 +16,20 @@ export default function Reports() {
   const now = new Date().toISOString().slice(0, 7);
   const [month, setMonth] = useState(now);
   const [data, setData] = useState(null);
+  const [capabilities, setCapabilities] = useState({ pdf_reports: false, platform_plan_name: "" });
 
   useEffect(() => {
     api.get(`/reports/barbers?month=${month}`).then((r) => setData(r.data)).catch(() => {});
   }, [month]);
+
+  useEffect(() => {
+    api.get("/reports/capabilities").then((r) => setCapabilities(r.data)).catch(() => {});
+  }, []);
+
+  const exportPdf = () => {
+    if (!capabilities.pdf_reports) return;
+    window.print();
+  };
 
   return (
     <div>
@@ -42,7 +52,16 @@ export default function Reports() {
         <div className="text-muted-foreground">Carregando relatório...</div>
       ) : (
         <>
-          <div className="text-sm text-muted-foreground mb-5">Período: <span className="text-amber-400 font-semibold">{monthLabel(data.month)}</span></div>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+            <div className="text-sm text-muted-foreground">Período: <span className="text-amber-400 font-semibold">{monthLabel(data.month)}</span></div>
+            {capabilities.pdf_reports ? (
+              <button onClick={exportPdf} className="print:hidden inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold bg-amber-500 text-zinc-950 hover:bg-amber-400">
+                <FileDown className="h-4 w-4" /> Exportar / salvar em PDF
+              </button>
+            ) : (
+              <div className="print:hidden text-xs text-muted-foreground">Exportação em PDF disponível no plano Premium.</div>
+            )}
+          </div>
 
           <div className="grid sm:grid-cols-3 gap-5 mb-6">
             <div className={card + " p-5"}>

@@ -284,6 +284,22 @@ async def unique_shop_code() -> str:
     raise HTTPException(500, "Não foi possível gerar código da barbearia")
 
 
+def _slugify(value: str) -> str:
+    value = (value or "").strip().lower()
+    value = re.sub(r"[^a-z0-9]+", "-", value)
+    return value.strip("-") or "barbearia"
+
+
+async def unique_shop_slug(name: str) -> str:
+    base = _slugify(name)
+    slug = base
+    n = 2
+    while await db.shops.find_one({"public_slug": slug}):
+        slug = f"{base}-{n}"
+        n += 1
+    return slug
+
+
 # ---------------- Models ----------------
 class ShopCreateIn(BaseModel):
     shop_name: str
@@ -292,6 +308,7 @@ class ShopCreateIn(BaseModel):
     password: str
     phone: Optional[str] = ""
     cpf_cnpj: str
+    platform_plan_id: str
 
 
 class PlatformLoginIn(BaseModel):
@@ -372,6 +389,15 @@ class AppointmentIn(BaseModel):
     client_id: Optional[str] = None
     client_name: Optional[str] = None
     client_phone: Optional[str] = ""
+
+
+class PublicAppointmentIn(BaseModel):
+    barber_id: str
+    service_id: str
+    date: str
+    time: str
+    client_name: str
+    client_phone: str
 
 
 class StatusIn(BaseModel):
@@ -457,6 +483,99 @@ async def seed_shop_defaults(shop_id: str, with_barbers: bool = False):
         ])
 
 
+# ---------------- Public signup / booking ----------------
+@api_router.get("/public/platform-plans")
+async def public_platform_plans():
+    plans = await db.platform_plans.find({"active": {"$ne": False}}).sort("monthly_price", 1).to_list(100)
+    return [_platform_plan_summary(p) for p in plans]
+
+
+async def _public_shop(slug: str):
+    shop = await db.shops.find_one({"public_slug": slug.strip().lower(), "status": "active"})
+    if not shop:
+        raise HTTPException(404, "Barbearia não encontrada ou indisponível")
+    return shop
+
+
+@api_router.get("/public/shops/{slug}")
+async def public_shop(slug: str):
+    shop = await _public_shop(slug)
+    sid = oid(shop["_id"])
+    barbers = await db.barbers.find({"shop_id": sid, "active": {"$ne": False}}).to_list(100)
+    services = await db.services.find({"shop_id": sid, "active": {"$ne": False}}).to_list(100)
+    return {
+        "name": shop.get("name", ""),
+        "slug": shop.get("public_slug", ""),
+        "barbers": [{"id": oid(b["_id"]), "name": b.get("name", ""), "specialty": b.get("specialty", "")} for b in barbers],
+        "services": [{"id": oid(x["_id"]), "name": x.get("name", ""), "duration": x.get("duration", 30), "price": x.get("price", 0)} for x in services],
+    }
+
+
+@api_router.get("/public/shops/{slug}/availability")
+async def public_availability(slug: str, barber_id: str, date: str):
+    shop = await _public_shop(slug)
+    sid = oid(shop["_id"])
+    barber = await db.barbers.find_one({"_id": safe_object_id(barber_id, "Barbeiro"), "shop_id": sid, "active": {"$ne": False}})
+    if not barber:
+        raise HTTPException(404, "Barbeiro não encontrado")
+    try:
+        d = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(400, "Data inválida")
+    hours = (barber.get("working_hours") or {}).get(WEEKDAYS[d.weekday()])
+    if not hours or not hours.get("start") or not hours.get("end"):
+        return {"slots": []}
+    taken = await db.appointments.find({"shop_id": sid, "barber_id": barber_id, "date": date, "status": {"$ne": "Cancelado"}}).to_list(500)
+    taken_times = {a["time"] for a in taken}
+    return {"slots": [{"time": t, "available": t not in taken_times} for t in gen_slots(hours["start"], hours["end"])]}
+
+
+@api_router.post("/public/shops/{slug}/appointments")
+async def public_create_appointment(slug: str, data: PublicAppointmentIn):
+    shop = await _public_shop(slug)
+    sid = oid(shop["_id"])
+    name = data.client_name.strip()
+    phone = data.client_phone.strip()
+    phone_normalized = _only_digits(phone)
+    if not name:
+        raise HTTPException(400, "Informe seu nome")
+    if len(phone_normalized) < 10 or len(phone_normalized) > 13:
+        raise HTTPException(400, "Informe um telefone válido")
+    barber = await db.barbers.find_one({"_id": safe_object_id(data.barber_id, "Barbeiro"), "shop_id": sid, "active": {"$ne": False}})
+    service = await db.services.find_one({"_id": safe_object_id(data.service_id, "Serviço"), "shop_id": sid, "active": {"$ne": False}})
+    if not barber or not service:
+        raise HTTPException(404, "Barbeiro ou serviço indisponível")
+    exists = await db.appointments.find_one({"shop_id": sid, "barber_id": data.barber_id, "date": data.date, "time": data.time, "status": {"$ne": "Cancelado"}})
+    if exists:
+        raise HTTPException(409, "Este horário já está indisponível")
+    cust = await db.users.find_one({"shop_id": sid, "role": "client", "phone_normalized": phone_normalized})
+    if not cust:
+        result = await db.users.insert_one({
+            "name": name, "role": "client", "phone": phone, "phone_normalized": phone_normalized,
+            "shop_id": sid, "crm_only": True, "points": 0, "total_spend": 0,
+            "preferred_barber": "", "notes": "", "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        client_id = oid(result.inserted_id)
+    else:
+        client_id = oid(cust["_id"])
+        name = cust.get("name", name)
+        phone = cust.get("phone", phone)
+    doc = {
+        "shop_id": sid, "shop_name": shop.get("name", "BarberStudio"),
+        "barber_id": data.barber_id, "barber_name": barber.get("name", ""),
+        "service_id": data.service_id, "service_name": service.get("name", ""),
+        "price": service.get("price", 0), "date": data.date, "time": data.time,
+        "client_id": client_id, "client_name": name, "client_phone": phone, "client_email": "",
+        "status": "Confirmado", "reminder_sent": False, "booking_source": "public_link",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    out = dict(doc)
+    result = await db.appointments.insert_one(doc)
+    out["id"] = oid(result.inserted_id)
+    await email_service.safe_send_confirmation(out)
+    return {"ok": True, "appointment": _appt_out({**doc, "_id": result.inserted_id})}
+
+
 # ---------------- Auth routes ----------------
 @api_router.post("/auth/request-access")
 async def request_access(data: ShopCreateIn, request: Request):
@@ -468,23 +587,23 @@ async def request_access(data: ShopCreateIn, request: Request):
     doc_digits = _only_digits(data.cpf_cnpj)
     if await db.shops.find_one({"cpf_cnpj": doc_digits}):
         raise HTTPException(status_code=400, detail="Já existe uma barbearia com este CPF/CNPJ")
+    plan_id = safe_object_id(data.platform_plan_id, "Plano")
+    selected_plan = await db.platform_plans.find_one({"_id": plan_id, "active": {"$ne": False}})
+    if not selected_plan:
+        raise HTTPException(status_code=400, detail="Plano selecionado não está disponível")
     code = await unique_shop_code()
+    public_slug = await unique_shop_slug(data.shop_name)
     shop_doc = {
-        "name": data.shop_name.strip(), "code": code, "status": "pending",
+        "name": data.shop_name.strip(), "code": code, "public_slug": public_slug, "status": "pending",
         "responsible_name": data.name, "cpf_cnpj": doc_digits,
         "phone": data.phone, "email": data.email.lower(),
         "decision_history": [],
+        "platform_plan_id": selected_plan["_id"],
+        "platform_plan_name": selected_plan.get("name", ""),
+        "subscription_status": "pending",
+        "subscription_status_source": "signup",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    # Every new barbershop starts on Essencial so limits are effective immediately.
-    starter_plan = await db.platform_plans.find_one({"name_normalized": "essencial", "active": {"$ne": False}})
-    if starter_plan:
-        shop_doc.update({
-            "platform_plan_id": starter_plan["_id"],
-            "platform_plan_name": starter_plan.get("name", "Essencial"),
-            "subscription_status": "pending",
-            "subscription_status_source": "manual",
-        })
     shop_res = await db.shops.insert_one(shop_doc)
     shop_id = oid(shop_res.inserted_id)
     email = data.email.lower()
@@ -497,7 +616,8 @@ async def request_access(data: ShopCreateIn, request: Request):
     await db.users.insert_one(admin)
     await seed_shop_defaults(shop_id)
     return {
-        "status": "pending", "shop_code": code,
+        "status": "pending", "shop_code": code, "public_slug": public_slug,
+        "platform_plan_name": selected_plan.get("name", ""),
         "message": "Cadastro em análise — aguardando aprovação do administrador da plataforma.",
     }
 

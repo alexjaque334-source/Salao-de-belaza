@@ -18,7 +18,7 @@
     "/app/backend/tests/test_walkin_appointments.py"
   ],
   "success_rate": {"backend": "100% (9/9)", "frontend": "100% on walk-in UI + registered-mode toggle"},
-  "test_credentials": "Admin DEMO01: shop_code=DEMO01 / alexjaque334@gmail.com / admin123. Super admin: alexjaque334@gmail.com / plataforma123 at POST /api/platform/login. Isolation test generates a fresh valid CNPJ and admin per run (TEST ISO <suffix>).",
+  "test_credentials": "Redacted: credentials are environment-only.",
   "seed_data_creation": "Each run creates: 2 walk-in appointments on DEMO01 ('TEST Walkin João' completed, 'TEST Walkin Cancel' cancelled then deleted), 1 registered-client appointment (reuses first client or creates test_<rand>@ex.com), 1 extra pending-then-active shop 'TEST ISO <suffix>' with its admin isotest_<suffix>@example.com. Safe cleanup: db.shops.deleteMany({name:/^TEST /}) + delete related users/appointments.",
   "retest_needed": false,
   "main_agent_can_self_test": true,

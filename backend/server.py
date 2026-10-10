@@ -303,6 +303,10 @@ class PlatformShopPlanIn(BaseModel):
     plan_id: str
 
 
+class PlatformSubscriptionStatusIn(BaseModel):
+    status: str
+
+
 class RegisterIn(BaseModel):
     shop_code: str
     name: str
@@ -1137,6 +1141,10 @@ def _shop_admin_summary(shop: dict, full: bool = False) -> dict:
         "platform_plan_id": oid(shop["platform_plan_id"]) if shop.get("platform_plan_id") else None,
         "platform_plan_name": shop.get("platform_plan_name", ""),
         "subscription_status": shop.get("subscription_status", "unassigned"),
+        "subscription_started_at": shop.get("subscription_started_at"),
+        "subscription_current_period_end": shop.get("subscription_current_period_end"),
+        "subscription_payment_method": shop.get("subscription_payment_method"),
+        "billing_provider": shop.get("billing_provider"),
         "created_at": shop.get("created_at"),
     }
 
@@ -1212,8 +1220,31 @@ async def platform_assign_shop_plan(shop_id: str, data: PlatformShopPlanIn, admi
             "platform_plan_id": pid,
             "platform_plan_name": plan.get("name", ""),
             "subscription_status": "active",
+            "subscription_started_at": shop.get("subscription_started_at") or now,
             "subscription_updated_at": now,
         }, "$push": {"decision_history": history}},
+    )
+    return _shop_admin_summary(await db.shops.find_one({"_id": sid}), full=True)
+
+
+@api_router.patch("/platform/shops/{shop_id}/subscription-status")
+async def platform_subscription_status(shop_id: str, data: PlatformSubscriptionStatusIn, admin: dict = Depends(get_super_admin)):
+    allowed = {"active", "pending", "past_due", "canceled", "suspended"}
+    status = data.status.strip().lower()
+    if status not in allowed:
+        raise HTTPException(400, "Status de assinatura inválido")
+    try:
+        sid = ObjectId(shop_id)
+    except Exception:
+        raise HTTPException(400, "Barbearia inválida")
+    shop = await db.shops.find_one({"_id": sid})
+    if not shop:
+        raise HTTPException(404, "Barbearia não encontrada")
+    now = datetime.now(timezone.utc).isoformat()
+    entry = {"action": "alterou assinatura", "by": admin["email"], "at": now, "reason": f"Status: {status}"}
+    await db.shops.update_one(
+        {"_id": sid},
+        {"$set": {"subscription_status": status, "subscription_updated_at": now}, "$push": {"decision_history": entry}},
     )
     return _shop_admin_summary(await db.shops.find_one({"_id": sid}), full=True)
 

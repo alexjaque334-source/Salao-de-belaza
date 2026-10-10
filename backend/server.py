@@ -813,17 +813,27 @@ async def create_appointment(data: AppointmentIn, user: dict = Depends(get_curre
 
 @api_router.patch("/appointments/{appt_id}/status")
 async def update_status(appt_id: str, data: StatusIn, admin: dict = Depends(require_admin)):
-    appt = await db.appointments.find_one({"_id": safe_object_id(appt_id, "Agendamento"), "shop_id": admin["shop_id"]})
+    allowed_statuses = {"Confirmado", "Concluído", "Cancelado"}
+    if data.status not in allowed_statuses:
+        raise HTTPException(status_code=400, detail="Status de agendamento inválido")
+    appointment_oid = safe_object_id(appt_id, "Agendamento")
+    appt = await db.appointments.find_one({"_id": appointment_oid, "shop_id": admin["shop_id"]})
     if not appt:
         raise HTTPException(404, "Agendamento não encontrado")
-    await db.appointments.update_one({"_id": safe_object_id(appt_id, "Agendamento")}, {"$set": {"status": data.status}})
+    await db.appointments.update_one(
+        {"_id": appointment_oid, "shop_id": admin["shop_id"]},
+        {"$set": {"status": data.status}},
+    )
     if data.status == "Concluído" and appt.get("status") != "Concluído":
         if appt.get("client_id"):
             await db.users.update_one(
-                {"_id": ObjectId(appt["client_id"])},
+                {"_id": safe_object_id(appt["client_id"], "Cliente"), "shop_id": admin["shop_id"]},
                 {"$inc": {"points": 10, "total_spend": appt.get("price", 0)}},
             )
-        await db.barbers.update_one({"_id": ObjectId(appt["barber_id"])}, {"$inc": {"total_cuts": 1}})
+        await db.barbers.update_one(
+            {"_id": safe_object_id(appt["barber_id"], "Barbeiro"), "shop_id": admin["shop_id"]},
+            {"$inc": {"total_cuts": 1}},
+        )
     return {"ok": True}
 
 

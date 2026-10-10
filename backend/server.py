@@ -507,17 +507,40 @@ async def register(data: RegisterIn, request: Request):
         raise HTTPException(status_code=403, detail="Esta barbearia ainda não está ativa.")
     shop_id = oid(shop["_id"])
     email = data.email.lower()
+    name = data.name.strip()
+    phone = _only_digits(data.phone)
+    if not name:
+        raise HTTPException(status_code=400, detail="Nome é obrigatório")
+    if len(phone) < 10 or len(phone) > 13:
+        raise HTTPException(status_code=400, detail="Telefone inválido")
     if await db.users.find_one({"shop_id": shop_id, "email": email}):
         raise HTTPException(status_code=400, detail="E-mail já cadastrado nesta barbearia")
+
+    # A matching CRM record is only a candidate. It is never silently merged here.
+    crm_match = await db.users.find_one({
+        "shop_id": shop_id, "role": "client", "crm_only": True, "phone_normalized": phone,
+    })
+    activation_code = secrets.token_urlsafe(32)
+    activation_digest = hashlib.sha256(activation_code.encode("utf-8")).hexdigest()
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
     doc = {
         "email": email, "password_hash": hash_password(data.password),
-        "name": data.name, "role": "client", "phone": data.phone, "shop_id": shop_id,
+        "name": name, "role": "client", "phone": data.phone.strip(), "phone_normalized": phone,
+        "shop_id": shop_id, "activation_pending": True,
+        "activation_token_hash": activation_digest, "activation_expires_at": expires_at.isoformat(),
+        "crm_match_candidate_id": oid(crm_match["_id"]) if crm_match else None,
         "points": 0, "total_spend": 0, "preferred_barber": "", "notes": "",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     res = await db.users.insert_one(doc)
-    doc["_id"] = res.inserted_id
-    return await auth_response(doc)
+    sent = await email_service.safe_send_activation_invite({
+        "client_email": email, "client_name": name,
+        "shop_name": shop.get("name") or "BarberStudio", "token": activation_code,
+    })
+    if not sent:
+        await db.users.delete_one({"_id": res.inserted_id, "shop_id": shop_id})
+        raise HTTPException(status_code=503, detail="Não foi possível enviar a verificação. Tente novamente.")
+    return {"status": "verification_required", "message": "Enviamos um link de verificação para seu e-mail."}
 
 
 @api_router.post("/auth/login")
@@ -910,12 +933,40 @@ async def activate_client(data: ActivateClientIn, request: Request):
         await bump_attempt(ident)
         raise HTTPException(status_code=400, detail="Link de ativação inválido, expirado ou já utilizado.")
 
+    update_set = {
+        "password_hash": hash_password(password), "activation_pending": False,
+        "email_verified": True, "activated_at": now.isoformat(),
+    }
+    update_unset = {"activation_token_hash": "", "activation_expires_at": ""}
+    candidate_id = user.get("crm_match_candidate_id")
+    if candidate_id:
+        crm = await db.users.find_one({
+            "_id": safe_object_id(candidate_id, "Cliente"),
+            "shop_id": user["shop_id"], "role": "client", "crm_only": True,
+            "phone_normalized": user.get("phone_normalized"),
+        })
+        if crm:
+            update_set["crm_linked_id"] = oid(crm["_id"])
+            update_set["points"] = crm.get("points", 0)
+            update_set["total_spend"] = crm.get("total_spend", 0)
+            update_set["preferred_barber"] = crm.get("preferred_barber", "")
+            await db.appointments.update_many(
+                {"shop_id": user["shop_id"], "client_id": oid(crm["_id"])},
+                {"$set": {"client_id": oid(user["_id"])}},
+            )
+            await db.subscriptions.update_many(
+                {"shop_id": user["shop_id"], "client_id": oid(crm["_id"])},
+                {"$set": {"client_id": oid(user["_id"])}},
+            )
+            await db.users.update_one(
+                {"_id": crm["_id"], "shop_id": user["shop_id"], "role": "client", "crm_only": True},
+                {"$set": {"linked_account_id": oid(user["_id"]), "crm_linked": True}},
+            )
+    update_unset["crm_match_candidate_id"] = ""
     result = await db.users.update_one(
         {"_id": user["_id"], "activation_pending": True, "activation_token_hash": digest,
          "activation_expires_at": {"$gt": now.isoformat()}},
-        {"$set": {"password_hash": hash_password(password), "activation_pending": False,
-                  "activated_at": now.isoformat()},
-         "$unset": {"activation_token_hash": "", "activation_expires_at": ""}},
+        {"$set": update_set, "$unset": update_unset},
     )
     if result.modified_count != 1:
         await bump_attempt(ident)

@@ -13,13 +13,8 @@ import Clients from "@/pages/admin/Clients";
 import Loyalty from "@/pages/admin/Loyalty";
 import Plans from "@/pages/admin/Plans";
 import Reports from "@/pages/admin/Reports";
-import Booking from "@/pages/client/Booking";
-import MyAppointments from "@/pages/client/MyAppointments";
-import ClientPlans from "@/pages/client/ClientPlans";
-import ClientLoyalty from "@/pages/client/ClientLoyalty";
 import PlatformLogin from "@/pages/platform/PlatformLogin";
 import PlatformDashboard from "@/pages/platform/PlatformDashboard";
-import ActivateClient from "@/pages/ActivateClient";
 
 function Protected({ children, role }) {
   const { user, ready } = useAuth();
@@ -32,7 +27,7 @@ function Protected({ children, role }) {
   }
   if (!user) return <Navigate to="/login" replace />;
   if (role && user.role !== role) {
-    return <Navigate to={user.role === "admin" ? "/dashboard" : "/agendar"} replace />;
+    return <Navigate to="/dashboard" replace />;
   }
   return children;
 }
@@ -41,7 +36,7 @@ function RootRedirect() {
   const { user, ready } = useAuth();
   if (!ready) return null;
   if (!user) return <Navigate to="/login" replace />;
-  return <Navigate to={user.role === "admin" ? "/dashboard" : "/agendar"} replace />;
+  return <Navigate to="/dashboard" replace />;
 }
 
 function AppRoutes() {
@@ -49,7 +44,6 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<RootRedirect />} />
       <Route path="/login" element={<Login />} />
-      <Route path="/ativar-conta" element={<ActivateClient />} />
       <Route path="/plataforma" element={<PlatformLogin />} />
       <Route path="/plataforma/painel" element={<PlatformDashboard />} />
 
@@ -64,12 +58,6 @@ function AppRoutes() {
         <Route path="/relatorios" element={<Reports />} />
       </Route>
 
-      <Route element={<Protected role="client"><Shell /></Protected>}>
-        <Route path="/agendar" element={<Booking />} />
-        <Route path="/meus-agendamentos" element={<MyAppointments />} />
-        <Route path="/planos-cliente" element={<ClientPlans />} />
-        <Route path="/fidelidade" element={<ClientLoyalty />} />
-      </Route>
 
       <Route path="*" element={<RootRedirect />} />
     </Routes>

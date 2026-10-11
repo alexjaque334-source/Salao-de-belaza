@@ -67,7 +67,6 @@ export default function Appointments() {
         subtitle="Gerencie a agenda de todos os barbeiros."
         action={
           <div className="flex items-center gap-2">
-            {publicLink && <button type="button" onClick={() => { navigator.clipboard.writeText(publicLink); toast.success("Link de agendamento copiado"); }} className={btnGhost} title="Copiar link público de agendamento"><Copy className="h-4 w-4" /> Copiar link</button>}
             <Dialog open={open} onOpenChange={setOpen}>
               <DialogTrigger asChild>
                 <button data-testid="new-appointment-btn" className={btnPrimary}><Plus className="h-4 w-4" /> Novo Agendamento</button>
@@ -80,6 +79,14 @@ export default function Appointments() {
           </div>
         }
       />
+
+      {publicLink && (
+        <div className="flex justify-end mb-5">
+          <button type="button" onClick={() => { navigator.clipboard.writeText(publicLink); toast.success("Link público de agendamento copiado"); }} className="inline-flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-semibold text-amber-400 transition-all hover:bg-amber-500/20" title="Copiar link de agendamento público">
+            <Copy className="h-4 w-4" /> Copiar link de agendamento público
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-3 mb-5">
         <div className="flex items-center gap-2 text-muted-foreground text-sm"><Filter className="h-4 w-4" /> Filtros:</div>

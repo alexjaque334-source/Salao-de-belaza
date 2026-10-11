@@ -497,6 +497,16 @@ async def _public_shop(slug: str):
     return shop
 
 
+async def _public_whatsapp_settings(shop_id: str) -> dict:
+    doc = await db.whatsapp_integrations.find_one({"shop_id": shop_id})
+    if not doc or not doc.get("booking_enabled"):
+        return {"booking_enabled": False, "phone": ""}
+    return {
+        "booking_enabled": True,
+        "phone": doc.get("phone_normalized", ""),
+    }
+
+
 @api_router.get("/public/shops/{slug}")
 async def public_shop(slug: str):
     shop = await _public_shop(slug)
@@ -506,6 +516,7 @@ async def public_shop(slug: str):
     return {
         "name": shop.get("name", ""),
         "slug": shop.get("public_slug", ""),
+        "whatsapp": await _public_whatsapp_settings(sid),
         "barbers": [{"id": oid(b["_id"]), "name": b.get("name", ""), "specialty": b.get("specialty", "")} for b in barbers],
         "services": [{"id": oid(x["_id"]), "name": x.get("name", ""), "duration": x.get("duration", 30), "price": x.get("price", 0)} for x in services],
     }

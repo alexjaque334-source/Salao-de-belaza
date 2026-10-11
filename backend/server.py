@@ -494,10 +494,16 @@ async def _public_shop(slug: str):
     shop = await db.shops.find_one({"public_slug": slug.strip().lower(), "status": "active"})
     if not shop:
         raise HTTPException(404, "Barbearia não encontrada ou indisponível")
+    plan = await _shop_platform_plan(oid(shop["_id"]))
+    if not plan or plan.get("name", "").strip().lower() not in {"profissional", "premium"}:
+        raise HTTPException(403, "O agendamento público está disponível nos planos Profissional e Premium.")
     return shop
 
 
 async def _public_whatsapp_settings(shop_id: str) -> dict:
+    plan = await _shop_platform_plan(shop_id)
+    if not plan or plan.get("name", "").strip().lower() != "premium":
+        return {"booking_enabled": False, "phone": ""}
     doc = await db.whatsapp_integrations.find_one({"shop_id": shop_id})
     if not doc or not doc.get("booking_enabled"):
         return {"booking_enabled": False, "phone": ""}
@@ -672,6 +678,9 @@ async def shop_public_link(admin: dict = Depends(require_admin)):
     shop = await db.shops.find_one({"_id": safe_object_id(admin["shop_id"], "Barbearia")})
     if not shop:
         raise HTTPException(404, "Barbearia não encontrada")
+    plan = await _shop_platform_plan(admin["shop_id"])
+    if not plan or plan.get("name", "").strip().lower() not in {"profissional", "premium"}:
+        raise HTTPException(403, "O agendamento público está disponível nos planos Profissional e Premium.")
     slug = shop.get("public_slug")
     if not slug:
         slug = await unique_shop_slug(shop.get("name", "barbearia"))
@@ -682,6 +691,9 @@ async def shop_public_link(admin: dict = Depends(require_admin)):
 # ---------------- WhatsApp integration ----------------
 @api_router.get("/integrations/whatsapp")
 async def get_whatsapp_integration(admin: dict = Depends(require_admin)):
+    plan = await _shop_platform_plan(admin["shop_id"])
+    if not plan or plan.get("name", "").strip().lower() != "premium":
+        raise HTTPException(403, "A confirmação pelo WhatsApp é exclusiva do plano Premium.")
     doc = await db.whatsapp_integrations.find_one({"shop_id": admin["shop_id"]})
     if not doc:
         return {"phone": "", "status": "not_connected", "booking_enabled": True, "plans_enabled": True}
@@ -694,9 +706,14 @@ async def get_whatsapp_integration(admin: dict = Depends(require_admin)):
 
 @api_router.put("/integrations/whatsapp")
 async def save_whatsapp_integration(data: WhatsAppIntegrationIn, admin: dict = Depends(require_admin)):
+    plan = await _shop_platform_plan(admin["shop_id"])
+    if not plan or plan.get("name", "").strip().lower() != "premium":
+        raise HTTPException(403, "A confirmação pelo WhatsApp é exclusiva do plano Premium.")
     phone = _only_digits(data.phone)
-    if len(phone) < 10 or len(phone) > 13:
+    if data.booking_enabled and (len(phone) < 10 or len(phone) > 13):
         raise HTTPException(400, "Número de WhatsApp inválido")
+    if phone and len(phone) <= 11 and not phone.startswith("55"):
+        phone = "55" + phone
     now = datetime.now(timezone.utc).isoformat()
     await db.whatsapp_integrations.update_one(
         {"shop_id": admin["shop_id"]},

@@ -688,6 +688,18 @@ async def shop_public_link(admin: dict = Depends(require_admin)):
     return {"slug": slug, "path": f"/agendar/{slug}"}
 
 
+# ---------------- Plan capabilities ----------------
+@api_router.get("/shop/capabilities")
+async def shop_capabilities(admin: dict = Depends(require_admin)):
+    plan = await _shop_platform_plan(admin["shop_id"])
+    name = plan.get("name", "").strip().lower() if plan else ""
+    return {
+        "platform_plan_name": plan.get("name", "") if plan else "",
+        "public_booking": name in {"profissional", "premium"},
+        "whatsapp_booking_confirmation": name == "premium",
+    }
+
+
 # ---------------- WhatsApp integration ----------------
 @api_router.get("/integrations/whatsapp")
 async def get_whatsapp_integration(admin: dict = Depends(require_admin)):

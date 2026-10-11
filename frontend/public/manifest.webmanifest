@@ -7,5 +7,13 @@
   "display": "standalone",
   "background_color": "#18181b",
   "theme_color": "#18181b",
-  "lang": "pt-BR"
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/barberstudio-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
 }

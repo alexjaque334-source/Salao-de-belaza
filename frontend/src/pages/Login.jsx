@@ -121,7 +121,7 @@ export default function Login() {
                     </div>
                     <div className="text-sm text-muted-foreground mt-1">{plan.description}</div>
                     <div className="text-xs text-muted-foreground mt-3">
-                      {plan.max_professionals == null ? "Profissionais ilimitados" : `Até ${plan.max_professionals} profissionais`} · {plan.max_services == null ? "Serviços ilimitados" : `Até ${plan.max_services} serviços`} · {plan.max_client_plans == null ? "Planos de clientes ilimitados" : `Até ${plan.max_client_plans} planos de clientes`}{plan.pdf_reports ? " · PDF mensal" : ""}
+                      {plan.max_professionals == null ? "Profissionais ilimitados" : `Até ${plan.max_professionals} profissionais`} · {plan.max_services == null ? "Serviços ilimitados" : `Até ${plan.max_services} serviços`} · {plan.max_client_plans == null ? "Planos de clientes ilimitados" : `Até ${plan.max_client_plans} planos de clientes`}{["profissional", "premium"].includes(plan.name.toLowerCase()) ? " · Link público de agendamento" : ""}{plan.name.toLowerCase() === "premium" ? " · Confirmação via WhatsApp" : ""}{plan.pdf_reports ? " · PDF mensal" : ""}
                     </div>
                   </button>
                 ))}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Scissors, CalendarCheck, Loader2 } from "lucide-react";
+import { Scissors, CalendarCheck, Loader2, MessageCircle } from "lucide-react";
 import { api, apiError } from "@/lib/api";
 import { btnPrimary, card, input, overline } from "@/lib/styles";
 import { toast } from "sonner";
@@ -17,6 +17,7 @@ export default function PublicBooking() {
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+  const [booked, setBooked] = useState(null);
 
   useEffect(() => {
     api.get(`/public/shops/${slug}`).then((r) => setShop(r.data)).catch((e) => toast.error(apiError(e)));
@@ -33,10 +34,11 @@ export default function PublicBooking() {
     if (!barberId || !serviceId || !time || !name.trim() || !phone.trim()) return toast.error("Preencha seus dados e escolha serviço, barbeiro e horário.");
     setLoading(true);
     try {
-      await api.post(`/public/shops/${slug}/appointments`, {
+      const response = await api.post(`/public/shops/${slug}/appointments`, {
         barber_id: barberId, service_id: serviceId, date, time,
         client_name: name.trim(), client_phone: phone.trim(),
       });
+      setBooked(response.data.appointment);
       setDone(true);
     } catch (e) { toast.error(apiError(e)); }
     finally { setLoading(false); }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  CalendarDays, DollarSign, Users, Crown, TrendingUp, Trophy, Clock, Link as LinkIcon, Copy,
+  CalendarDays, DollarSign, Users, Crown, TrendingUp, Trophy, Clock,
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, Tooltip, CartesianGrid,
@@ -29,11 +29,9 @@ function Stat({ icon: Icon, label, value, accent }) {
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
-  const [publicLink, setPublicLink] = useState("");
 
   useEffect(() => {
     api.get("/dashboard/stats").then((r) => setStats(r.data)).catch(() => {});
-    api.get("/shop/public-link").then((r) => setPublicLink(window.location.origin + r.data.path)).catch(() => {});
   }, []);
 
   if (!stats) return <div className="text-muted-foreground">Carregando painel...</div>;
@@ -41,15 +39,6 @@ export default function Dashboard() {
   return (
     <div>
       <PageHeader eyebrow="Visão Geral" title="Painel da Barbearia" subtitle="Resumo do desempenho e próximos atendimentos." />
-
-      {publicLink && <div className={card + " p-5 mb-6"}>
-        <div className="flex items-center gap-2"><LinkIcon className="h-4 w-4 text-amber-500" /><div className={overline}>Link público de agendamento</div></div>
-        <div className="flex flex-col sm:flex-row gap-2 mt-3">
-          <input readOnly value={publicLink} className="flex-1 bg-input/60 border border-border rounded-xl px-3 py-2.5 text-sm" />
-          <button onClick={() => navigator.clipboard.writeText(publicLink)} className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 border border-border text-sm font-semibold hover:bg-secondary"><Copy className="h-4 w-4" /> Copiar link</button>
-        </div>
-        <p className="text-xs text-muted-foreground mt-2">Use este link na bio do Instagram, WhatsApp ou onde seus clientes preferirem agendar.</p>
-      </div>}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6" data-testid="dashboard-stats">
         <Stat icon={CalendarDays} label="Agendamentos Hoje" value={stats.appts_today} accent="bg-amber-500/10 text-amber-400" />

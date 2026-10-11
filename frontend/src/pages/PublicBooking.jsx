@@ -5,6 +5,19 @@ import { api, apiError } from "@/lib/api";
 import { btnPrimary, card, input, overline } from "@/lib/styles";
 import { toast } from "sonner";
 
+function sendWhatsApp(shop, booked) {
+  const lines = [
+    "Olá! Acabei de fazer um agendamento na " + shop.name + ".",
+    "Cliente: " + booked.client_name,
+    "Serviço: " + booked.service_name,
+    "Profissional: " + booked.barber_name,
+    "Data: " + booked.date.split("-").reverse().join("/"),
+    "Horário: " + booked.time,
+  ];
+  const destination = "https://wa.me/" + shop.whatsapp.phone + "?text=" + encodeURIComponent(lines.join("\n"));
+  window.open(destination, "_blank", "noopener,noreferrer");
+}
+
 export default function PublicBooking() {
   const { slug } = useParams();
   const [shop, setShop] = useState(null);

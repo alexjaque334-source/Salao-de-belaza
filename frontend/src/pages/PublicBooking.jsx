@@ -56,6 +56,7 @@ export default function PublicBooking() {
         <CalendarCheck className="h-12 w-12 text-emerald-400 mx-auto mb-3" />
         <h2 className="font-display text-2xl font-bold">Agendamento confirmado!</h2>
         <p className="text-muted-foreground mt-2">Seu horário foi enviado diretamente para a agenda da {shop.name}.</p>
+        {booked && <div className="mt-5 rounded-xl border border-border p-4 text-left text-sm"><div><strong>Serviço:</strong> {booked.service_name}</div><div><strong>Profissional:</strong> {booked.barber_name}</div><div><strong>Data:</strong> {booked.date.split("-").reverse().join("/")}</div><div><strong>Horário:</strong> {booked.time}</div></div>}
       </div> : <div className={card + " p-6 space-y-5"}>
         <div className="grid sm:grid-cols-2 gap-4">
           <div><label className="text-sm font-medium">Serviço</label><select value={serviceId} onChange={(e)=>setServiceId(e.target.value)} className={input+" mt-1"}><option value="">Selecione...</option>{shop.services.map(s=><option key={s.id} value={s.id}>{s.name} — R$ {Number(s.price).toFixed(2).replace(".",",")}</option>)}</select></div>

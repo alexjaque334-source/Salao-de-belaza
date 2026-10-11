@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Trash2, CheckCircle2, XCircle, Filter, MessageCircle } from "lucide-react";
+import { Plus, Trash2, CheckCircle2, XCircle, Filter, MessageCircle, Copy } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
@@ -28,11 +28,13 @@ export default function Appointments() {
   const [filterStatus, setFilterStatus] = useState("");
   const [filterDate, setFilterDate] = useState("");
   const [open, setOpen] = useState(false);
+  const [publicLink, setPublicLink] = useState("");
 
   const load = () => api.get("/appointments").then((r) => setAppts(r.data));
   useEffect(() => {
     load();
     api.get("/barbers").then((r) => setBarbers(r.data));
+    api.get("/shop/public-link").then((r) => setPublicLink(window.location.origin + r.data.path)).catch(() => {});
   }, []);
 
   const setStatus = async (id, status) => {
@@ -64,15 +66,18 @@ export default function Appointments() {
         title="Agendamentos"
         subtitle="Gerencie a agenda de todos os barbeiros."
         action={
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <button data-testid="new-appointment-btn" className={btnPrimary}><Plus className="h-4 w-4" /> Novo Agendamento</button>
-            </DialogTrigger>
-            <DialogContent className="max-w-3xl bg-card border-border">
-              <DialogHeader><DialogTitle className="font-display text-2xl">Novo Agendamento</DialogTitle></DialogHeader>
-              <BookingWizard isAdmin onBooked={() => { setOpen(false); load(); }} />
-            </DialogContent>
-          </Dialog>
+          <div className="flex items-center gap-2">
+            {publicLink && <button type="button" onClick={() => { navigator.clipboard.writeText(publicLink); toast.success("Link de agendamento copiado"); }} className={btnGhost} title="Copiar link público de agendamento"><Copy className="h-4 w-4" /> Copiar link</button>}
+            <Dialog open={open} onOpenChange={setOpen}>
+              <DialogTrigger asChild>
+                <button data-testid="new-appointment-btn" className={btnPrimary}><Plus className="h-4 w-4" /> Novo Agendamento</button>
+              </DialogTrigger>
+              <DialogContent className="max-w-3xl bg-card border-border">
+                <DialogHeader><DialogTitle className="font-display text-2xl">Novo Agendamento</DialogTitle></DialogHeader>
+                <BookingWizard isAdmin onBooked={() => { setOpen(false); load(); }} />
+              </DialogContent>
+            </Dialog>
+          </div>
         }
       />
 

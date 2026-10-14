@@ -21,10 +21,14 @@ function sendWhatsApp(shop, booked) {
 export default function PublicBooking() {
   const { slug } = useParams();
   const [shop, setShop] = useState(null);
+  const [shopLoading, setShopLoading] = useState(true);
+  const [shopError, setShopError] = useState("");
   const [barberId, setBarberId] = useState("");
   const [serviceId, setServiceId] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [slots, setSlots] = useState([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [slotsError, setSlotsError] = useState("");
   const [time, setTime] = useState("");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -33,15 +37,51 @@ export default function PublicBooking() {
   const [booked, setBooked] = useState(null);
 
   useEffect(() => {
-    api.get(`/public/shops/${slug}`).then((r) => setShop(r.data)).catch((e) => toast.error(apiError(e)));
+    let active = true;
+    setShopLoading(true);
+    setShopError("");
+    setShop(null);
+    api.get(`/public/shops/${slug}`)
+      .then((r) => {
+        const data = r.data;
+        if (!data || typeof data.name !== "string" || !Array.isArray(data.barbers) || !Array.isArray(data.services)) {
+          throw new Error("A resposta do agendamento público está inválida. Verifique a configuração da API.");
+        }
+        if (active) setShop(data);
+      })
+      .catch((e) => { if (active) setShopError(apiError(e)); })
+      .finally(() => { if (active) setShopLoading(false); });
+    return () => { active = false; };
   }, [slug]);
 
   useEffect(() => {
-    if (!barberId || !date) return setSlots([]);
+    let active = true;
+    if (!barberId || !serviceId || !date) {
+      setSlots([]);
+      setSlotsError("");
+      setSlotsLoading(false);
+      setTime("");
+      return () => { active = false; };
+    }
     setTime("");
-    api.get(`/public/shops/${slug}/availability?barber_id=${barberId}&date=${date}`)
-      .then((r) => setSlots(r.data.slots)).catch(() => setSlots([]));
-  }, [slug, barberId, date]);
+    setSlotsError("");
+    setSlotsLoading(true);
+    api.get(`/public/shops/${slug}/availability?barber_id=${barberId}&date=${date}&service_id=${serviceId}`)
+      .then((r) => {
+        if (!Array.isArray(r.data?.slots)) {
+          throw new Error("Não foi possível ler os horários disponíveis.");
+        }
+        if (active) setSlots(r.data.slots);
+      })
+      .catch((e) => {
+        if (active) {
+          setSlots([]);
+          setSlotsError(apiError(e));
+        }
+      })
+      .finally(() => { if (active) setSlotsLoading(false); });
+    return () => { active = false; };
+  }, [slug, barberId, serviceId, date]);
 
   const submit = async () => {
     if (!barberId || !serviceId || !time || !name.trim() || !phone.trim()) return toast.error("Preencha seus dados e escolha serviço, barbeiro e horário.");
@@ -57,7 +97,14 @@ export default function PublicBooking() {
     finally { setLoading(false); }
   };
 
-  if (!shop) return <div className="min-h-screen grid place-items-center bg-background text-muted-foreground">Carregando barbearia...</div>;
+  if (shopLoading) return <div className="min-h-screen grid place-items-center bg-background text-muted-foreground">Carregando barbearia...</div>;
+  if (!shop) return <div className="min-h-screen grid place-items-center bg-background text-foreground p-5">
+    <div className={card + " w-full max-w-md p-6 text-center"}>
+      <Scissors className="h-9 w-9 text-amber-400 mx-auto mb-3" />
+      <h1 className="font-display text-xl font-bold">Agendamento indisponível</h1>
+      <p role="alert" className="text-sm text-muted-foreground mt-2">{shopError || "Não foi possível localizar esta barbearia. Confira o link ou fale diretamente com a equipe."}</p>
+    </div>
+  </div>;
 
   return <div className="min-h-screen bg-background text-foreground p-5 sm:p-10">
     <div className="max-w-3xl mx-auto">
@@ -77,7 +124,13 @@ export default function PublicBooking() {
           <div><label className="text-sm font-medium">Profissional</label><select value={barberId} onChange={(e)=>setBarberId(e.target.value)} className={input+" mt-1"}><option value="">Selecione...</option>{shop.barbers.map(b=><option key={b.id} value={b.id}>{b.name}{b.specialty ? ` — ${b.specialty}` : ""}</option>)}</select></div>
           <div><label className="text-sm font-medium">Data</label><input type="date" min={new Date().toISOString().slice(0,10)} value={date} onChange={(e)=>setDate(e.target.value)} className={input+" mt-1"} /></div>
         </div>
-        {barberId && <div><div className="text-sm font-medium mb-2">Horário</div><div className="grid grid-cols-3 sm:grid-cols-6 gap-2">{slots.map(s=><button type="button" key={s.time} disabled={!s.available} onClick={()=>setTime(s.time)} className={`py-2 rounded-lg border text-sm ${!s.available ? "opacity-30 line-through" : time===s.time ? "border-amber-500 bg-amber-500/10 text-amber-400" : "border-border"}`}>{s.time}</button>)}</div></div>}
+        {barberId && serviceId && <div>
+          <div className="text-sm font-medium mb-2">Horário</div>
+          {slotsLoading ? <p className="text-sm text-muted-foreground" role="status">Buscando horários disponíveis...</p>
+            : slotsError ? <p className="text-sm text-rose-400" role="alert">{slotsError}</p>
+            : slots.length === 0 ? <p className="text-sm text-muted-foreground" role="status">Não há horários disponíveis nesta data. Escolha outra data ou profissional.</p>
+            : <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">{slots.map(s=><button type="button" key={s.time} disabled={!s.available || loading} onClick={()=>setTime(s.time)} className={`py-2 rounded-lg border text-sm ${!s.available ? "opacity-30 line-through" : time===s.time ? "border-amber-500 bg-amber-500/10 text-amber-400" : "border-border"}`}>{s.time}</button>)}</div>}
+        </div>}
         <div className="grid sm:grid-cols-2 gap-4">
           <div><label className="text-sm font-medium">Seu nome</label><input value={name} onChange={(e)=>setName(e.target.value)} className={input+" mt-1"} placeholder="Nome completo" /></div>
           <div><label className="text-sm font-medium">Telefone / WhatsApp</label><input value={phone} onChange={(e)=>setPhone(e.target.value)} className={input+" mt-1"} placeholder="(41) 99999-9999" /></div>

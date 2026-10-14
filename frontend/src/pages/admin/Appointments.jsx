@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Trash2, CheckCircle2, XCircle, Filter, MessageCircle, Copy } from "lucide-react";
+import { Plus, Trash2, CheckCircle2, XCircle, Filter, MessageCircle, Share2 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
@@ -34,8 +34,25 @@ export default function Appointments() {
   useEffect(() => {
     load();
     api.get("/barbers").then((r) => setBarbers(r.data));
-    api.get("/shop/public-link").then((r) => setPublicLink(window.location.origin + r.data.path)).catch(() => {});
+    api.get("/shop/public-link")
+      .then((r) => setPublicLink(new URL(r.data.path, window.location.origin).toString()))
+      .catch((e) => toast.error(apiError(e)));
   }, []);
+
+  const sharePublicLink = async () => {
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "Agendamento online", url: publicLink });
+        toast.success("Link compartilhado.");
+        return;
+      }
+      if (!navigator.clipboard?.writeText) throw new Error("Compartilhamento indisponível neste navegador.");
+      await navigator.clipboard.writeText(publicLink);
+      toast.success("Link público copiado.");
+    } catch (e) {
+      if (e?.name !== "AbortError") toast.error(e?.message || "Não foi possível compartilhar o link.");
+    }
+  };
 
   const setStatus = async (id, status) => {
     try {
@@ -82,8 +99,8 @@ export default function Appointments() {
 
       {publicLink && (
         <div className="flex justify-end mb-5">
-          <button type="button" onClick={() => { navigator.clipboard.writeText(publicLink); toast.success("Link público de agendamento copiado"); }} className="inline-flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-semibold text-amber-400 transition-all hover:bg-amber-500/20" title="Copiar link de agendamento público">
-            <Copy className="h-4 w-4" /> Copiar link de agendamento público
+          <button type="button" onClick={sharePublicLink} className="inline-flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-semibold text-amber-400 transition-all hover:bg-amber-500/20" title="Compartilhar ou copiar link público de agendamento">
+            <Share2 className="h-4 w-4" /> Compartilhar link público
           </button>
         </div>
       )}

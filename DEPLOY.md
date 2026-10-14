@@ -41,8 +41,9 @@ MongoDB. Isolamento total de dados por barbearia.
 | `CRON_SECRET` | (= WEBHOOK_CRON_SECRET) | Usado pelo Vercel Cron no header Authorization |
 | `CORS_ORIGINS` | `https://seuapp.vercel.app` | Origens permitidas |
 
-No frontend (prefixo `REACT_APP_`): defina `REACT_APP_BACKEND_URL` como a própria URL do app
-(ex: `https://seuapp.vercel.app`), pois a API fica no mesmo domínio sob `/api`.
+No frontend, `VITE_BACKEND_URL` é opcional: por padrão, o app usa a própria origem e acessa a API
+no mesmo domínio sob `/api`. Defina essa variável somente se frontend e API estiverem em origens
+separadas.
 
 ## Observações
 - Painel do dono da plataforma (Super Admin) em `/plataforma` (login próprio, sem código de

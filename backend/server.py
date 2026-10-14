@@ -11,12 +11,13 @@ from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 from bson import ObjectId
+from pymongo.errors import DuplicateKeyError
 import bcrypt
 import jwt
 import hmac
 import re
 import hashlib
-import email_service
+from . import email_service
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -529,22 +530,17 @@ async def public_shop(slug: str):
 
 
 @api_router.get("/public/shops/{slug}/availability")
-async def public_availability(slug: str, barber_id: str, date: str):
+async def public_availability(slug: str, barber_id: str, date: str, service_id: Optional[str] = None):
     shop = await _public_shop(slug)
     sid = oid(shop["_id"])
     barber = await db.barbers.find_one({"_id": safe_object_id(barber_id, "Barbeiro"), "shop_id": sid, "active": {"$ne": False}})
     if not barber:
         raise HTTPException(404, "Barbeiro não encontrado")
-    try:
-        d = datetime.strptime(date, "%Y-%m-%d").date()
-    except ValueError:
-        raise HTTPException(400, "Data inválida")
-    hours = (barber.get("working_hours") or {}).get(WEEKDAYS[d.weekday()])
-    if not hours or not hours.get("start") or not hours.get("end"):
+    hours = _working_hours_for_date(barber, date)
+    if not hours:
         return {"slots": []}
-    taken = await db.appointments.find({"shop_id": sid, "barber_id": barber_id, "date": date, "status": {"$ne": "Cancelado"}}).to_list(500)
-    taken_times = {a["time"] for a in taken}
-    return {"slots": [{"time": t, "available": t not in taken_times} for t in gen_slots(hours["start"], hours["end"])]}
+    duration = await _requested_service_duration(sid, service_id)
+    return {"slots": await _available_slots(sid, barber_id, date, hours, duration)}
 
 
 @api_router.post("/public/shops/{slug}/appointments")
@@ -562,32 +558,43 @@ async def public_create_appointment(slug: str, data: PublicAppointmentIn):
     service = await db.services.find_one({"_id": safe_object_id(data.service_id, "Serviço"), "shop_id": sid, "active": {"$ne": False}})
     if not barber or not service:
         raise HTTPException(404, "Barbeiro ou serviço indisponível")
-    exists = await db.appointments.find_one({"shop_id": sid, "barber_id": data.barber_id, "date": data.date, "time": data.time, "status": {"$ne": "Cancelado"}})
-    if exists:
-        raise HTTPException(409, "Este horário já está indisponível")
-    cust = await db.users.find_one({"shop_id": sid, "role": "client", "phone_normalized": phone_normalized})
-    if not cust:
-        result = await db.users.insert_one({
-            "name": name, "role": "client", "phone": phone, "phone_normalized": phone_normalized,
-            "shop_id": sid, "crm_only": True, "points": 0, "total_spend": 0,
-            "preferred_barber": "", "notes": "", "created_at": datetime.now(timezone.utc).isoformat(),
-        })
-        client_id = oid(result.inserted_id)
-    else:
-        client_id = oid(cust["_id"])
-        name = cust.get("name", name)
-        phone = cust.get("phone", phone)
-    doc = {
-        "shop_id": sid, "shop_name": shop.get("name", "BarberStudio"),
-        "barber_id": data.barber_id, "barber_name": barber.get("name", ""),
-        "service_id": data.service_id, "service_name": service.get("name", ""),
-        "price": service.get("price", 0), "date": data.date, "time": data.time,
-        "client_id": client_id, "client_name": name, "client_phone": phone, "client_email": "",
-        "status": "Confirmado", "reminder_sent": False, "booking_source": "public_link",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
+    duration = _service_duration(service)
+    _assert_within_working_hours(barber, data.date, data.time, duration)
+    async def create_booking(session):
+        cust = await db.users.find_one(
+            {"shop_id": sid, "role": "client", "phone_normalized": phone_normalized},
+            session=session,
+        )
+        client_name = name
+        client_phone = phone
+        if not cust:
+            client_doc = {
+                "name": name, "role": "client", "phone": phone, "phone_normalized": phone_normalized,
+                "shop_id": sid, "crm_only": True, "points": 0, "total_spend": 0,
+                "preferred_barber": "", "notes": "", "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            result = await db.users.insert_one(client_doc, session=session)
+            client_id = oid(result.inserted_id)
+        else:
+            client_id = oid(cust["_id"])
+            client_name = cust.get("name", client_name)
+            client_phone = cust.get("phone", client_phone)
+        doc = {
+            "shop_id": sid, "shop_name": shop.get("name", "BarberStudio"),
+            "barber_id": data.barber_id, "barber_name": barber.get("name", ""),
+            "service_id": data.service_id, "service_name": service.get("name", ""),
+            "price": service.get("price", 0), "date": data.date, "time": data.time,
+            "client_id": client_id, "client_name": client_name, "client_phone": client_phone, "client_email": "",
+            "status": "Confirmado", "reminder_sent": False, "booking_source": "public_link",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        result = await db.appointments.insert_one(doc, session=session)
+        return result, doc
+
+    result, doc = await _create_booking_atomically(
+        sid, data.barber_id, data.date, data.time, duration, create_booking
+    )
     out = dict(doc)
-    result = await db.appointments.insert_one(doc)
     out["id"] = oid(result.inserted_id)
     await email_service.safe_send_confirmation(out)
     return {"ok": True, "appointment": _appt_out({**doc, "_id": result.inserted_id})}
@@ -897,38 +904,179 @@ async def change_service_status(
 
 
 # ---------------- Availability ----------------
-def gen_slots(start: str, end: str, interval: int = 30):
+def _service_duration(service: dict | None, default: int = 30) -> int:
+    try:
+        duration = int(service.get("duration", default)) if service else default
+    except (TypeError, ValueError):
+        duration = default
+    return duration if duration > 0 else default
+
+
+async def _requested_service_duration(shop_id: str, service_id: Optional[str]) -> int:
+    if not service_id:
+        return 30
+    service = await db.services.find_one({
+        "_id": safe_object_id(service_id, "Serviço"),
+        "shop_id": shop_id,
+        "active": {"$ne": False},
+    })
+    if not service:
+        raise HTTPException(404, "Serviço não encontrado")
+    return _service_duration(service)
+
+
+def _time_to_minutes(value: str) -> int:
+    try:
+        parsed = datetime.strptime(value, "%H:%M")
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Horário inválido")
+    return parsed.hour * 60 + parsed.minute
+
+
+def _working_hours_for_date(barber: dict, date: str):
+    try:
+        day = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(400, "Data inválida")
+    hours = (barber.get("working_hours") or {}).get(WEEKDAYS[day.weekday()])
+    if not hours or not hours.get("start") or not hours.get("end"):
+        return None
+    return hours
+
+
+def _assert_within_working_hours(barber: dict, date: str, time: str, duration: int) -> None:
+    hours = _working_hours_for_date(barber, date)
+    if not hours:
+        raise HTTPException(400, "O barbeiro não atende nesta data")
+    start = _time_to_minutes(time)
+    end = _time_to_minutes(hours["end"])
+    opening = _time_to_minutes(hours["start"])
+    if start < opening or start + duration > end:
+        raise HTTPException(400, "Agendamento fora do horário de atendimento")
+
+
+def gen_slots(start: str, end: str, interval: int = 30, duration: Optional[int] = None):
     slots = []
-    sh, sm = map(int, start.split(":"))
-    eh, em = map(int, end.split(":"))
-    cur = sh * 60 + sm
-    last = eh * 60 + em
-    while cur < last:
+    cur = _time_to_minutes(start)
+    last = _time_to_minutes(end)
+    duration = duration or interval
+    interval = max(1, interval)
+    while cur + duration <= last:
         slots.append(f"{cur // 60:02d}:{cur % 60:02d}")
         cur += interval
     return slots
 
 
+async def _appointment_duration(appointment: dict, shop_id: str, session=None) -> int:
+    if appointment.get("duration") is not None:
+        return _service_duration({"duration": appointment["duration"]})
+    service_id = appointment.get("service_id")
+    if service_id and ObjectId.is_valid(service_id):
+        service = await db.services.find_one(
+            {"_id": ObjectId(service_id), "shop_id": shop_id}, session=session
+        )
+        if service:
+            return _service_duration(service)
+    return 30
+
+
+def _intervals_overlap(start: int, duration: int, other_start: int, other_duration: int) -> bool:
+    return start < other_start + other_duration and other_start < start + duration
+
+
+async def _booking_conflicts(
+    shop_id: str, barber_id: str, date: str, time: str, duration: int, session=None
+) -> bool:
+    appointments = await db.appointments.find({
+        "shop_id": shop_id,
+        "barber_id": barber_id,
+        "date": date,
+        "status": {"$ne": "Cancelado"},
+    }, session=session).to_list(None)
+    start = _time_to_minutes(time)
+    for appointment in appointments:
+        try:
+            other_start = _time_to_minutes(appointment["time"])
+        except (KeyError, HTTPException):
+            continue
+        other_duration = await _appointment_duration(appointment, shop_id, session=session)
+        if _intervals_overlap(start, duration, other_start, other_duration):
+            return True
+    return False
+
+
+async def _create_booking_atomically(
+    shop_id: str,
+    barber_id: str,
+    date: str,
+    time: str,
+    duration: int,
+    create_booking,
+):
+    lock_id = f"{shop_id}:{barber_id}"
+    try:
+        await db.booking_locks.update_one(
+            {"_id": lock_id}, {"$setOnInsert": {"revision": 0}}, upsert=True
+        )
+    except DuplicateKeyError:
+        # Another instance created this shop/barber/day lock concurrently.
+        pass
+
+    async def in_transaction(session):
+        lock_result = await db.booking_locks.update_one(
+            {"_id": lock_id}, {"$inc": {"revision": 1}}, session=session
+        )
+        if lock_result.matched_count != 1:
+            raise RuntimeError("Não foi possível adquirir o bloqueio transacional da agenda")
+        if await _booking_conflicts(shop_id, barber_id, date, time, duration, session=session):
+            raise HTTPException(status_code=409, detail="Este horário já está indisponível")
+        return await create_booking(session)
+
+    async with await client.start_session() as session:
+        return await session.with_transaction(in_transaction)
+
+
+async def _available_slots(shop_id: str, barber_id: str, date: str, hours: dict, duration: int):
+    interval = min(30, duration)
+    slots = gen_slots(hours["start"], hours["end"], interval=interval, duration=duration)
+    appointments = await db.appointments.find({
+        "shop_id": shop_id,
+        "barber_id": barber_id,
+        "date": date,
+        "status": {"$ne": "Cancelado"},
+    }).to_list(None)
+    available = []
+    for slot in slots:
+        start = _time_to_minutes(slot)
+        conflict = False
+        for appointment in appointments:
+            try:
+                other_start = _time_to_minutes(appointment["time"])
+            except (KeyError, HTTPException):
+                continue
+            other_duration = await _appointment_duration(appointment, shop_id)
+            if _intervals_overlap(start, duration, other_start, other_duration):
+                conflict = True
+                break
+        available.append({"time": slot, "available": not conflict})
+    return available
+
+
 @api_router.get("/availability")
-async def availability(barber_id: str, date: str, user: dict = Depends(get_current_user)):
+async def availability(
+    barber_id: str,
+    date: str,
+    user: dict = Depends(get_current_user),
+    service_id: Optional[str] = None,
+):
     barber = await db.barbers.find_one({"_id": safe_object_id(barber_id, "Barbeiro"), "shop_id": user["shop_id"]})
     if not barber:
         raise HTTPException(404, "Barbeiro não encontrado")
-    try:
-        d = datetime.strptime(date, "%Y-%m-%d").date()
-    except ValueError:
-        raise HTTPException(400, "Data inválida")
-    wd = WEEKDAYS[d.weekday()]
-    hours = (barber.get("working_hours") or {}).get(wd)
-    if not hours or not hours.get("start") or not hours.get("end"):
+    hours = _working_hours_for_date(barber, date)
+    if not hours:
         return {"slots": []}
-    all_slots = gen_slots(hours["start"], hours["end"])
-    taken = await db.appointments.find({
-        "shop_id": user["shop_id"], "barber_id": barber_id, "date": date,
-        "status": {"$ne": "Cancelado"},
-    }).to_list(500)
-    taken_times = {t["time"] for t in taken}
-    return {"slots": [{"time": s, "available": s not in taken_times} for s in all_slots]}
+    duration = await _requested_service_duration(user["shop_id"], service_id)
+    return {"slots": await _available_slots(user["shop_id"], barber_id, date, hours, duration)}
 
 
 # ---------------- Appointments ----------------
@@ -960,66 +1108,69 @@ async def create_appointment(data: AppointmentIn, user: dict = Depends(get_curre
     if not service:
         raise HTTPException(404, "Serviço não encontrado")
 
-    exists = await db.appointments.find_one({
-        "shop_id": sid, "barber_id": data.barber_id, "date": data.date, "time": data.time,
-        "status": {"$ne": "Cancelado"},
-    })
-    if exists:
-        raise HTTPException(status_code=409, detail="Este horário já está indisponível")
-    if user["role"] == "admin" and data.client_id:
-        cust = await db.users.find_one({"_id": safe_object_id(data.client_id, "Cliente"), "shop_id": sid})
-        if not cust:
-            raise HTTPException(404, "Cliente não encontrado")
-        client_id = data.client_id
-        client_name = cust["name"]
-        client_phone = cust.get("phone", "")
-        client_email = cust.get("email", "")
-    elif user["role"] == "admin" and data.client_name:
-        # A manual booking also feeds the shop CRM, so the customer is available
-        # to every barber/admin of this same barbershop on future appointments.
-        client_name = data.client_name.strip()
-        client_phone = (data.client_phone or "").strip()
-        phone_normalized = _only_digits(client_phone)
-        cust = None
-        if 10 <= len(phone_normalized) <= 13:
-            cust = await db.users.find_one({
-                "shop_id": sid, "role": "client", "phone_normalized": phone_normalized
-            })
-        if not cust:
-            client_doc = {
-                "name": client_name, "role": "client", "phone": client_phone,
-                "phone_normalized": phone_normalized, "shop_id": sid, "crm_only": True,
-                "points": 0, "total_spend": 0, "preferred_barber": "", "notes": "",
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            }
-            result = await db.users.insert_one(client_doc)
-            client_id = oid(result.inserted_id)
-        else:
-            client_id = oid(cust["_id"])
-            client_name = cust.get("name", client_name)
-            client_phone = cust.get("phone", client_phone)
-        client_email = ""
-    elif user["role"] == "admin":
+    duration = _service_duration(service)
+    _assert_within_working_hours(barber, data.date, data.time, duration)
+    if user["role"] == "admin" and not data.client_id and not data.client_name:
         raise HTTPException(400, "Informe o cliente cadastrado ou o nome do cliente avulso")
-    else:
-        client_id = oid(user["_id"])
-        client_name = user["name"]
-        client_phone = user.get("phone", "")
-        client_email = user.get("email", "")
     shop = await db.shops.find_one({"_id": ObjectId(sid)})
-    doc = {
-        "shop_id": sid, "shop_name": shop["name"] if shop else "BarberStudio",
-        "barber_id": data.barber_id, "barber_name": barber["name"],
-        "service_id": data.service_id, "service_name": service["name"],
-        "price": service.get("price", 0),
-        "date": data.date, "time": data.time,
-        "client_id": client_id, "client_name": client_name,
-        "client_phone": client_phone, "client_email": client_email,
-        "status": "Confirmado", "reminder_sent": False,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
+    async def create_booking(session):
+        if user["role"] == "admin" and data.client_id:
+            cust = await db.users.find_one(
+                {"_id": safe_object_id(data.client_id, "Cliente"), "shop_id": sid},
+                session=session,
+            )
+            if not cust:
+                raise HTTPException(404, "Cliente não encontrado")
+            client_id = data.client_id
+            client_name = cust["name"]
+            client_phone = cust.get("phone", "")
+            client_email = cust.get("email", "")
+        elif user["role"] == "admin" and data.client_name:
+            client_name = data.client_name.strip()
+            client_phone = (data.client_phone or "").strip()
+            phone_normalized = _only_digits(client_phone)
+            cust = None
+            if 10 <= len(phone_normalized) <= 13:
+                cust = await db.users.find_one({
+                    "shop_id": sid, "role": "client", "phone_normalized": phone_normalized
+                }, session=session)
+            if not cust:
+                client_doc = {
+                    "name": client_name, "role": "client", "phone": client_phone,
+                    "phone_normalized": phone_normalized, "shop_id": sid, "crm_only": True,
+                    "points": 0, "total_spend": 0, "preferred_barber": "", "notes": "",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }
+                result = await db.users.insert_one(client_doc, session=session)
+                client_id = oid(result.inserted_id)
+            else:
+                client_id = oid(cust["_id"])
+                client_name = cust.get("name", client_name)
+                client_phone = cust.get("phone", client_phone)
+            client_email = ""
+        else:
+            client_id = oid(user["_id"])
+            client_name = user["name"]
+            client_phone = user.get("phone", "")
+            client_email = user.get("email", "")
+        doc = {
+            "shop_id": sid, "shop_name": shop["name"] if shop else "BarberStudio",
+            "barber_id": data.barber_id, "barber_name": barber["name"],
+            "service_id": data.service_id, "service_name": service["name"],
+            "price": service.get("price", 0),
+            "date": data.date, "time": data.time,
+            "client_id": client_id, "client_name": client_name,
+            "client_phone": client_phone, "client_email": client_email,
+            "status": "Confirmado", "reminder_sent": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        result = await db.appointments.insert_one(doc, session=session)
+        return result, doc
+
+    res, doc = await _create_booking_atomically(
+        sid, data.barber_id, data.date, data.time, duration, create_booking
+    )
     out = dict(doc)
-    res = await db.appointments.insert_one(doc)
     out["id"] = oid(res.inserted_id)
     # Serverless-safe: send confirmation inline (safe_send never raises).
     await email_service.safe_send_confirmation(out)
@@ -1731,12 +1882,6 @@ async def seed():
         await db.users.drop_index("email_1")
     except Exception:
         pass
-    # Remove legacy data that predates multi-shop (no shop_id) so isolation stays clean.
-    for coll in ("users", "barbers", "services", "appointments", "plans", "subscriptions"):
-        try:
-            await db[coll].delete_many({"shop_id": {"$exists": False}})
-        except Exception:
-            pass
     try:
         await db.shops.create_index("code", unique=True)
         # CRM clients intentionally have no e-mail. A normal unique compound index

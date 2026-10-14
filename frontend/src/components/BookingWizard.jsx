@@ -31,18 +31,18 @@ export function BookingWizard({ isAdmin = false, onBooked }) {
   }, [isAdmin]);
 
   useEffect(() => {
-    if (!barberId || !date) {
+    if (!barberId || !serviceId || !date) {
       setSlots([]);
       return;
     }
     setLoadingSlots(true);
     setTime("");
     api
-      .get(`/availability?barber_id=${barberId}&date=${date}`)
+      .get(`/availability?barber_id=${barberId}&date=${date}&service_id=${serviceId}`)
       .then((r) => setSlots(r.data.slots))
       .catch(() => setSlots([]))
       .finally(() => setLoadingSlots(false));
-  }, [barberId, date]);
+  }, [barberId, serviceId, date]);
 
   const submit = async () => {
     if (!barberId || !serviceId || !time) {
@@ -65,7 +65,7 @@ export function BookingWizard({ isAdmin = false, onBooked }) {
       await api.post("/appointments", payload);
       toast.success(`Agendamento confirmado para ${date.split("-").reverse().join("/")} às ${time}!`);
       setTime("");
-      const r = await api.get(`/availability?barber_id=${barberId}&date=${date}`);
+      const r = await api.get(`/availability?barber_id=${barberId}&date=${date}&service_id=${serviceId}`);
       setSlots(r.data.slots);
       if (isAdmin) {
         loadClients();
@@ -150,7 +150,7 @@ export function BookingWizard({ isAdmin = false, onBooked }) {
         </div>
       )}
 
-      {selBarber && (
+      {selBarber && serviceId && (
         <div className={card + " p-5"}>
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm font-semibold">Horários disponíveis — {selBarber.name}</div>

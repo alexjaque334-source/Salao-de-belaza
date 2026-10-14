@@ -20,25 +20,29 @@ export function BookingWizard({ isAdmin = false, onBooked }) {
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  const loadClients = () => {
+    if (isAdmin) api.get("/clients").then((r) => setClients(r.data)).catch(() => {});
+  };
+
   useEffect(() => {
     api.get("/barbers").then((r) => setBarbers(r.data.filter((b) => b.active)));
-    api.get("/services").then((r) => setServices(r.data));
-    if (isAdmin) api.get("/clients").then((r) => setClients(r.data)).catch(() => {});
+    api.get("/services").then((r) => setServices(r.data.filter((s) => s.active !== false)));
+    loadClients();
   }, [isAdmin]);
 
   useEffect(() => {
-    if (!barberId || !date) {
+    if (!barberId || !serviceId || !date) {
       setSlots([]);
       return;
     }
     setLoadingSlots(true);
     setTime("");
     api
-      .get(`/availability?barber_id=${barberId}&date=${date}`)
+      .get(`/availability?barber_id=${barberId}&date=${date}&service_id=${serviceId}`)
       .then((r) => setSlots(r.data.slots))
       .catch(() => setSlots([]))
       .finally(() => setLoadingSlots(false));
-  }, [barberId, date]);
+  }, [barberId, serviceId, date]);
 
   const submit = async () => {
     if (!barberId || !serviceId || !time) {
@@ -61,8 +65,13 @@ export function BookingWizard({ isAdmin = false, onBooked }) {
       await api.post("/appointments", payload);
       toast.success(`Agendamento confirmado para ${date.split("-").reverse().join("/")} às ${time}!`);
       setTime("");
-      const r = await api.get(`/availability?barber_id=${barberId}&date=${date}`);
+      const r = await api.get(`/availability?barber_id=${barberId}&date=${date}&service_id=${serviceId}`);
       setSlots(r.data.slots);
+      if (isAdmin) {
+        loadClients();
+        setWalkinName("");
+        setWalkinPhone("");
+      }
       onBooked && onBooked();
     } catch (err) {
       toast.error(apiError(err));
@@ -141,7 +150,7 @@ export function BookingWizard({ isAdmin = false, onBooked }) {
         </div>
       )}
 
-      {selBarber && (
+      {selBarber && serviceId && (
         <div className={card + " p-5"}>
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm font-semibold">Horários disponíveis — {selBarber.name}</div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Trash2, CheckCircle2, XCircle, Filter, MessageCircle } from "lucide-react";
+import { Plus, Trash2, CheckCircle2, XCircle, Filter, MessageCircle, Share2 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
@@ -28,12 +28,31 @@ export default function Appointments() {
   const [filterStatus, setFilterStatus] = useState("");
   const [filterDate, setFilterDate] = useState("");
   const [open, setOpen] = useState(false);
+  const [publicLink, setPublicLink] = useState("");
 
   const load = () => api.get("/appointments").then((r) => setAppts(r.data));
   useEffect(() => {
     load();
     api.get("/barbers").then((r) => setBarbers(r.data));
+    api.get("/shop/public-link")
+      .then((r) => setPublicLink(new URL(r.data.path, window.location.origin).toString()))
+      .catch((e) => toast.error(apiError(e)));
   }, []);
+
+  const sharePublicLink = async () => {
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "Agendamento online", url: publicLink });
+        toast.success("Link compartilhado.");
+        return;
+      }
+      if (!navigator.clipboard?.writeText) throw new Error("Compartilhamento indisponível neste navegador.");
+      await navigator.clipboard.writeText(publicLink);
+      toast.success("Link público copiado.");
+    } catch (e) {
+      if (e?.name !== "AbortError") toast.error(e?.message || "Não foi possível compartilhar o link.");
+    }
+  };
 
   const setStatus = async (id, status) => {
     try {
@@ -64,17 +83,27 @@ export default function Appointments() {
         title="Agendamentos"
         subtitle="Gerencie a agenda de todos os barbeiros."
         action={
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <button data-testid="new-appointment-btn" className={btnPrimary}><Plus className="h-4 w-4" /> Novo Agendamento</button>
-            </DialogTrigger>
-            <DialogContent className="max-w-3xl bg-card border-border">
-              <DialogHeader><DialogTitle className="font-display text-2xl">Novo Agendamento</DialogTitle></DialogHeader>
-              <BookingWizard isAdmin onBooked={() => { setOpen(false); load(); }} />
-            </DialogContent>
-          </Dialog>
+          <div className="flex items-center gap-2">
+            <Dialog open={open} onOpenChange={setOpen}>
+              <DialogTrigger asChild>
+                <button data-testid="new-appointment-btn" className={btnPrimary}><Plus className="h-4 w-4" /> Novo Agendamento</button>
+              </DialogTrigger>
+              <DialogContent className="max-w-3xl bg-card border-border">
+                <DialogHeader><DialogTitle className="font-display text-2xl">Novo Agendamento</DialogTitle></DialogHeader>
+                <BookingWizard isAdmin onBooked={() => { setOpen(false); load(); }} />
+              </DialogContent>
+            </Dialog>
+          </div>
         }
       />
+
+      {publicLink && (
+        <div className="flex justify-end mb-5">
+          <button type="button" onClick={sharePublicLink} className="inline-flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-semibold text-amber-400 transition-all hover:bg-amber-500/20" title="Compartilhar ou copiar link público de agendamento">
+            <Share2 className="h-4 w-4" /> Compartilhar link público
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-3 mb-5">
         <div className="flex items-center gap-2 text-muted-foreground text-sm"><Filter className="h-4 w-4" /> Filtros:</div>

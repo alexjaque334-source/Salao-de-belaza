@@ -28,11 +28,11 @@ except Exception:
 BASE = os.environ["REACT_APP_BACKEND_URL"].rstrip("/")
 API = f"{BASE}/api"
 
-DEMO_CODE = "DEMO01"
-ADMIN_EMAIL = "alexjaque334@gmail.com"
-ADMIN_PASS = "admin123"
-SA_EMAIL = "alexjaque334@gmail.com"
-SA_PASS = "plataforma123"
+DEMO_CODE = os.environ.get("DEMO_SHOP_CODE", "DEMO01")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "")
+ADMIN_PASS = os.environ.get("ADMIN_PASSWORD", "")
+SA_EMAIL = os.environ.get("SUPERADMIN_EMAIL", "")
+SA_PASS = os.environ.get("SUPERADMIN_PASSWORD", "")
 
 
 # ---------- helpers ----------
@@ -66,6 +66,8 @@ def _future_date(offset_days=14):
 # ---------- fixtures ----------
 @pytest.fixture(scope="session")
 def admin_token():
+    if not ADMIN_EMAIL or not ADMIN_PASS:
+        pytest.skip("Credenciais do admin de teste devem vir do ambiente")
     r = requests.post(f"{API}/auth/login",
                       json={"shop_code": DEMO_CODE, "email": ADMIN_EMAIL, "password": ADMIN_PASS})
     assert r.status_code == 200, r.text

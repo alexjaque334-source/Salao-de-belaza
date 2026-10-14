@@ -23,6 +23,18 @@
       "dest": "/frontend/assets/$1"
     },
     {
+      "src": "/manifest.webmanifest",
+      "dest": "/frontend/manifest.webmanifest"
+    },
+    {
+      "src": "/sw.js",
+      "dest": "/frontend/sw.js"
+    },
+    {
+      "src": "/barberstudio-icon.svg",
+      "dest": "/frontend/barberstudio-icon.svg"
+    },
+    {
       "handle": "filesystem"
     },
     {

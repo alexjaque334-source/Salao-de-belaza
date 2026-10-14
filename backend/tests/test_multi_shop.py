@@ -11,7 +11,10 @@ import pytest
 import requests
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://barber-loyalty-14.preview.emergentagent.com").rstrip("/")
-CRON_SECRET = "b8f3d1a67c4e92f05ba7d8e1c3609f24a5e7b0d2c9f16834"
+CRON_SECRET = os.environ.get("CRON_SECRET", "")
+DEMO_CODE = os.environ.get("DEMO_SHOP_CODE", "DEMO01")
+DEMO_EMAIL = os.environ.get("ADMIN_EMAIL", "")
+DEMO_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 
 
 def _future_date(days=3):
@@ -257,6 +260,8 @@ class TestCron:
         assert requests.get(f"{BASE_URL}/api/cron/reminders").status_code == 401
 
     def test_cron_authorized(self):
+        if not CRON_SECRET:
+            pytest.skip("CRON_SECRET deve vir do ambiente")
         r = requests.post(f"{BASE_URL}/api/cron/reminders",
                           headers={"Authorization": f"Bearer {CRON_SECRET}"})
         assert r.status_code == 200
@@ -268,8 +273,10 @@ class TestCron:
 # ----- Demo admin login still works -----
 class TestDemoAdmin:
     def test_demo_login(self):
+        if not DEMO_EMAIL or not DEMO_PASSWORD:
+            pytest.skip("Credenciais de teste devem vir do ambiente")
         r = requests.post(f"{BASE_URL}/api/auth/login", json={
-            "shop_code": "DEMO01", "email": "alexjaque334@gmail.com", "password": "admin123",
+            "shop_code": DEMO_CODE, "email": DEMO_EMAIL, "password": DEMO_PASSWORD,
         })
         assert r.status_code == 200
         assert r.json()["user"]["shop_code"] == "DEMO01"

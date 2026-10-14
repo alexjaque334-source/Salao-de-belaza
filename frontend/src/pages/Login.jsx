@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Scissors, Eye, EyeOff, Store, ArrowLeft } from "lucide-react";
@@ -9,13 +9,21 @@ import { btnPrimary, input, overline } from "@/lib/styles";
 export default function Login() {
   const { authenticate } = useAuth();
   const navigate = useNavigate();
-  const [mode, setMode] = useState("login"); // login | register | request-access
-  const [form, setForm] = useState({ shop_code: "", shop_name: "", name: "", email: "", password: "", phone: "", cpf_cnpj: "" });
+  const [mode, setMode] = useState("login"); // login | request-access
+  const [form, setForm] = useState({ shop_code: "", shop_name: "", name: "", email: "", password: "", phone: "", cpf_cnpj: "", platform_plan_id: "" });
+  const [plans, setPlans] = useState([]);
+  const [requestStep, setRequestStep] = useState("plan");
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState(null); // {code, message}
 
   const upd = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+
+  useEffect(() => {
+    if (mode === "request-access") {
+      api.get("/public/platform-plans").then((r) => setPlans(r.data)).catch(() => toast.error("Não foi possível carregar os planos."));
+    }
+  }, [mode]);
 
   const goAfter = (data) => {
     authenticate(data.token, data.user);
@@ -29,17 +37,10 @@ export default function Login() {
       if (mode === "request-access") {
         const { data } = await api.post("/auth/request-access", {
           shop_name: form.shop_name, name: form.name, email: form.email,
-          password: form.password, phone: form.phone, cpf_cnpj: form.cpf_cnpj,
+          password: form.password, phone: form.phone, cpf_cnpj: form.cpf_cnpj, platform_plan_id: form.platform_plan_id,
         });
-        setPending({ code: data.shop_code, message: data.message });
+        setPending({ code: data.shop_code, message: data.message, slug: data.public_slug, plan: data.platform_plan_name });
         toast.success("Solicitação enviada!");
-      } else if (mode === "register") {
-        const { data } = await api.post("/auth/register", {
-          shop_code: form.shop_code, name: form.name, email: form.email,
-          password: form.password, phone: form.phone,
-        });
-        toast.success("Conta criada com sucesso!");
-        goAfter(data);
       } else {
         const { data } = await api.post("/auth/login", {
           shop_code: form.shop_code, email: form.email, password: form.password,
@@ -56,12 +57,10 @@ export default function Login() {
 
   const titles = {
     login: "Entrar na conta",
-    register: "Criar conta de cliente",
     "request-access": "Solicitar acesso para minha barbearia",
   };
   const subtitles = {
     login: "Informe o código da barbearia, e-mail e senha.",
-    register: "Cadastre-se usando o código da sua barbearia.",
     "request-access": "Preencha os dados; seu cadastro passará por aprovação.",
   };
 
@@ -105,15 +104,37 @@ export default function Login() {
               <p className="text-sm text-foreground mt-2">{pending.message}</p>
               <div className="mt-3 text-sm text-muted-foreground">Código da sua barbearia:</div>
               <div className="font-display text-2xl font-extrabold text-amber-400 tracking-[0.3em]">{pending.code}</div>
-              <p className="text-xs text-muted-foreground mt-2">Este código só permitirá o cadastro de clientes após a aprovação. Guarde-o para acessar sua conta.</p>
+              <p className="text-xs text-muted-foreground mt-2">Plano selecionado: <strong>{pending.plan}</strong>. Guarde este código para acessar sua conta. Seu link público será <strong>/agendar/{pending.slug}</strong> quando a barbearia estiver ativa.</p>
               <button data-testid="pending-back-btn" onClick={() => { setPending(null); setMode("login"); }} className={btnPrimary + " w-full mt-4"}>Voltar para entrar</button>
             </div>
           )}
 
-          {!pending && (
+          {!pending && mode === "request-access" && requestStep === "plan" && (
+            <div className="mt-7 space-y-4">
+              <div className="grid gap-3">
+                {plans.map((plan) => (
+                  <button key={plan.id} type="button" onClick={() => setForm({ ...form, platform_plan_id: plan.id })}
+                    className={`text-left rounded-xl border p-4 transition-all ${form.platform_plan_id === plan.id ? "border-amber-500 bg-amber-500/10" : "border-border bg-card hover:border-amber-500/40"}`}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="font-display font-bold text-lg">{plan.name}</div>
+                      <div className="font-bold text-amber-400">R$ {Number(plan.monthly_price).toFixed(2).replace(".", ",")}<span className="text-xs text-muted-foreground">/mês</span></div>
+                    </div>
+                    <div className="text-sm text-muted-foreground mt-1">{plan.description}</div>
+                    <div className="text-xs text-muted-foreground mt-3">
+                      {plan.max_professionals == null ? "Profissionais ilimitados" : `Até ${plan.max_professionals} profissionais`} · {plan.max_services == null ? "Serviços ilimitados" : `Até ${plan.max_services} serviços`} · {plan.max_client_plans == null ? "Planos de clientes ilimitados" : `Até ${plan.max_client_plans} planos de clientes`}{["profissional", "premium"].includes(plan.name.toLowerCase()) ? " · Link público de agendamento" : ""}{plan.name.toLowerCase() === "premium" ? " · Confirmação via WhatsApp" : ""}{plan.pdf_reports ? " · PDF mensal" : ""}
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <button type="button" disabled={!form.platform_plan_id} onClick={() => setRequestStep("details")} className={btnPrimary + " w-full disabled:opacity-50"}>Continuar com este plano</button>
+            </div>
+          )}
+
+          {!pending && (mode !== "request-access" || requestStep === "details") && (
           <form onSubmit={submit} className="mt-7 space-y-4">
             {mode === "request-access" && (
               <>
+                <button type="button" onClick={() => setRequestStep("plan")} className="text-sm text-amber-500 font-semibold hover:underline">← Trocar plano</button>
                 <div>
                   <label className="text-sm font-medium">Nome da barbearia</label>
                   <input data-testid="shop-name-input" className={input + " mt-1.5"} value={form.shop_name} onChange={upd("shop_name")} required placeholder="Ex: Barbearia do João" />
@@ -125,7 +146,7 @@ export default function Login() {
               </>
             )}
 
-            {mode !== "request-access" && (
+            {mode === "login" && (
               <div>
                 <label className="text-sm font-medium flex items-center gap-1.5"><Store className="h-3.5 w-3.5 text-amber-500" /> Código da barbearia</label>
                 <input data-testid="shop-code-input" className={input + " mt-1.5 uppercase tracking-widest"} value={form.shop_code} onChange={(e) => setForm({ ...form, shop_code: e.target.value.toUpperCase() })} required placeholder="EX: DEMO01" />
@@ -162,7 +183,7 @@ export default function Login() {
             </div>
 
             <button data-testid="login-submit-btn" type="submit" disabled={loading} className={btnPrimary + " w-full"}>
-              {loading ? "Aguarde..." : mode === "login" ? "Entrar" : mode === "register" ? "Cadastrar" : "Solicitar acesso"}
+              {loading ? "Aguarde..." : mode === "login" ? "Entrar" : "Solicitar acesso"}
             </button>
           </form>
           )}
@@ -172,12 +193,8 @@ export default function Login() {
             {mode === "login" && (
               <>
                 <p>
-                  Ainda não tem conta?{" "}
-                  <button data-testid="go-register-btn" onClick={() => setMode("register")} className="text-amber-500 font-semibold hover:underline">Cadastre-se</button>
-                </p>
-                <p>
                   É dono de barbearia?{" "}
-                  <button data-testid="go-create-shop-btn" onClick={() => setMode("request-access")} className="text-amber-500 font-semibold hover:underline">Solicitar acesso para minha barbearia</button>
+                  <button data-testid="go-create-shop-btn" onClick={() => { setMode("request-access"); setRequestStep("plan"); }} className="text-amber-500 font-semibold hover:underline">Solicitar acesso para minha barbearia</button>
                 </p>
               </>
             )}

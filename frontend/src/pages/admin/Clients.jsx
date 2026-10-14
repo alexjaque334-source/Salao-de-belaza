@@ -6,7 +6,7 @@ import { api, apiError } from "@/lib/api";
 import { PageHeader } from "@/components/PageHeader";
 import { btnPrimary, btnSecondary, card, input, badge, tierColors } from "@/lib/styles";
 
-const defaultForm = { name: "", email: "", phone: "", password: "cliente123", notes: "" };
+const defaultForm = { name: "", phone: "", notes: "" };
 
 export default function Clients() {
   const [clients, setClients] = useState([]);
@@ -19,19 +19,19 @@ export default function Clients() {
   useEffect(() => { load(); }, []);
 
   const openNew = () => { setEditing(null); setForm(defaultForm); setOpen(true); };
-  const openEdit = (c) => { setEditing(c); setForm({ name: c.name, email: c.email, phone: c.phone, notes: c.notes || "", password: "" }); setOpen(true); };
+  const openEdit = (c) => { setEditing(c); setForm({ name: c.name, phone: c.phone || "", notes: c.notes || "" }); setOpen(true); };
 
   const save = async () => {
-    if (!form.name || !form.email) { toast.error("Nome e e-mail obrigatórios."); return; }
+    if (!form.name || !form.phone) { toast.error("Nome e telefone obrigatórios."); return; }
     try {
       if (editing) await api.put(`/clients/${editing.id}`, form);
       else await api.post("/clients", form);
-      toast.success(editing ? "Cliente atualizado" : "Cliente cadastrado");
+      toast.success(editing ? "Cliente atualizado" : "Cliente cadastrado.");
       setOpen(false); load();
     } catch (e) { toast.error(apiError(e)); }
   };
 
-  const filtered = clients.filter((c) => `${c.name} ${c.email} ${c.phone}`.toLowerCase().includes(q.toLowerCase()));
+  const filtered = clients.filter((c) => `${c.name} ${c.phone}`.toLowerCase().includes(q.toLowerCase()));
 
   return (
     <div>
@@ -67,7 +67,7 @@ export default function Clients() {
                       <div className="font-medium">{c.name}</div>
                     </div>
                   </td>
-                  <td className="px-5 py-3"><div>{c.email}</div><div className="text-xs text-muted-foreground">{c.phone || "—"}</div></td>
+                  <td className="px-5 py-3"><div>{c.phone || "—"}</div></td>
                   <td className="px-5 py-3"><span className={badge(tierColors[c.tier])}>{c.tier}</span></td>
                   <td className="px-5 py-3 font-semibold text-amber-400">{c.points}</td>
                   <td className="px-5 py-3">{c.visits}</td>
@@ -87,9 +87,7 @@ export default function Clients() {
           <DialogHeader><DialogTitle className="font-display text-2xl">{editing ? "Editar Cliente" : "Novo Cliente"}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div><label className="text-sm font-medium">Nome</label><input data-testid="client-name-input" className={input + " mt-1"} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-            <div><label className="text-sm font-medium">E-mail</label><input data-testid="client-email-input" type="email" disabled={!!editing} className={input + " mt-1 disabled:opacity-60"} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
             <div><label className="text-sm font-medium">Telefone</label><input className={input + " mt-1"} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
-            {!editing && <div><label className="text-sm font-medium">Senha de acesso</label><input className={input + " mt-1"} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /></div>}
             <div><label className="text-sm font-medium">Observações</label><textarea className={input + " mt-1 min-h-[80px]"} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
             <div className="flex justify-end gap-2">
               <button onClick={() => setOpen(false)} className={btnSecondary}>Cancelar</button>

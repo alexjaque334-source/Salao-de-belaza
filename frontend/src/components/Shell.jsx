@@ -2,33 +2,38 @@ import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import {
   LayoutDashboard, CalendarDays, Users, Scissors, Crown, BadgeDollarSign,
-  LogOut, CalendarPlus, History, Sparkles, Menu, X, BarChart3,
+  LogOut, Menu, X, BarChart3, ClipboardList, MessageCircle, LockKeyhole,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { api } from "@/lib/api";
 import { ShopStatusScreen } from "@/components/ShopStatusScreen";
 
 const adminNav = [
   { to: "/dashboard", label: "Visão Geral", icon: LayoutDashboard, testid: "nav-dashboard-tab" },
   { to: "/agendamentos", label: "Agendamentos", icon: CalendarDays, testid: "nav-agendamentos-tab" },
   { to: "/barbeiros", label: "Barbeiros", icon: Scissors, testid: "nav-barbeiros-tab" },
+  { to: "/servicos", label: "Serviços", icon: ClipboardList, testid: "nav-servicos-tab" },
   { to: "/clientes", label: "Clientes", icon: Users, testid: "nav-clientes-tab" },
   { to: "/fidelizados", label: "Fidelizados", icon: Crown, testid: "nav-fidelizados-tab" },
   { to: "/planos", label: "Planos", icon: BadgeDollarSign, testid: "nav-planos-tab" },
+  { to: "/whatsapp", label: "WhatsApp", icon: MessageCircle, testid: "nav-whatsapp-tab" },
   { to: "/relatorios", label: "Relatórios", icon: BarChart3, testid: "nav-relatorios-tab" },
 ];
 
-const clientNav = [
-  { to: "/agendar", label: "Agendar Horário", icon: CalendarPlus, testid: "nav-public-booking-tab" },
-  { to: "/meus-agendamentos", label: "Meus Agendamentos", icon: History, testid: "nav-my-appointments-tab" },
-  { to: "/planos-cliente", label: "Planos", icon: BadgeDollarSign, testid: "nav-client-plans-tab" },
-  { to: "/fidelidade", label: "Minha Fidelidade", icon: Sparkles, testid: "nav-client-loyalty-tab" },
-];
 
 export function Shell() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const nav = user.role === "admin" ? adminNav : clientNav;
+  const [capabilities, setCapabilities] = useState(null);
+  const nav = adminNav;
+
+  useEffect(() => {
+    api.get("/shop/capabilities").then(({ data }) => setCapabilities(data)).catch(() => {});
+  }, []);
+
+  const whatsappLocked = capabilities && !capabilities.whatsapp_booking_confirmation;
 
   if (user.shop_status && user.shop_status !== "active") {
     return <ShopStatusScreen status={user.shop_status} shopName={user.shop_name} shopCode={user.shop_code} />;
@@ -63,24 +68,41 @@ export function Shell() {
       </div>
 
       <nav className="flex-1 px-3 py-5 space-y-1 overflow-y-auto">
-        {nav.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            data-testid={item.testid}
-            onClick={() => setOpen(false)}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-semibold transition-all ${
-                isActive
-                  ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                  : "text-muted-foreground hover:text-foreground hover:bg-secondary border border-transparent"
-              }`
-            }
-          >
-            <item.icon className="h-[18px] w-[18px]" />
-            {item.label}
-          </NavLink>
-        ))}
+        {nav.map((item) => {
+          if (item.to === "/whatsapp" && whatsappLocked) {
+            return (
+              <button
+                key={item.to}
+                type="button"
+                data-testid={item.testid}
+                onClick={() => { setOpen(false); toast.info("Função WhatsApp disponível no plano Premium."); }}
+                className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-semibold text-muted-foreground hover:text-amber-400 hover:bg-amber-500/5 border border-transparent transition-all"
+              >
+                <item.icon className="h-[18px] w-[18px]" />
+                <span>{item.label}</span>
+                <LockKeyhole className="ml-auto h-3.5 w-3.5 text-amber-500" />
+              </button>
+            );
+          }
+          return (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              data-testid={item.testid}
+              onClick={() => setOpen(false)}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-semibold transition-all ${
+                  isActive
+                    ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary border border-transparent"
+                }`
+              }
+            >
+              <item.icon className="h-[18px] w-[18px]" />
+              {item.label}
+            </NavLink>
+          );
+        })}
       </nav>
 
       <div className="p-3 border-t border-border">

@@ -18,7 +18,7 @@
     "/app/backend/tests/test_multi_shop.py"
   ],
   "success_rate": {"backend": "100% (20/20)", "frontend": "100% on critical multi-shop UI flows"},
-  "test_credentials": "DEMO01 / alexjaque334@gmail.com / admin123 ; shops/users created at runtime with TEST_ prefix.",
+  "test_credentials": "Redacted: test credentials must be supplied only through environment variables.",
   "seed_data_creation": "Created ad-hoc TEST shops, barbers, services, plans, clients, and appointments via API during tests. Shops persist in DB as TEST Barbearia A/B etc. — safe to prune by shop_name LIKE 'TEST %'.",
   "retest_needed": false,
   "main_agent_can_self_test": true,

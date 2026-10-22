@@ -6,6 +6,11 @@ import { btnPrimary, card, input, overline } from "@/lib/styles";
 import { toast } from "sonner";
 
 function sendWhatsApp(shop, booked) {
+  const cleanPhone = String(shop?.whatsapp?.phone || "").replace(/\D/g, "");
+  if (!cleanPhone) {
+    toast.error("Número de WhatsApp da barbearia inválido.");
+    return;
+  }
   const lines = [
     "Olá! Acabei de fazer um agendamento na " + shop.name + ".",
     "Cliente: " + booked.client_name,
@@ -14,7 +19,7 @@ function sendWhatsApp(shop, booked) {
     "Data: " + booked.date.split("-").reverse().join("/"),
     "Horário: " + booked.time,
   ];
-  const destination = "https://wa.me/" + shop.whatsapp.phone + "?text=" + encodeURIComponent(lines.join("\n"));
+  const destination = "https://wa.me/" + cleanPhone + "?text=" + encodeURIComponent(lines.join("\n"));
   window.open(destination, "_blank", "noopener,noreferrer");
 }
 
@@ -32,9 +37,60 @@ export default function PublicBooking() {
   const [time, setTime] = useState("");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [website, setWebsite] = useState("");
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [booked, setBooked] = useState(null);
+
+  useEffect(() => {
+    if (!shop?.name) return;
+    const pageTitle = `Agendar Horário em ${shop.name} | BarberStudio`;
+    const servicesList = (shop.services || []).map((s) => s.name).slice(0, 5).join(", ");
+    const pageDesc = `Agende online seu horário na ${shop.name}. Serviços: ${servicesList || "Corte, Barba e Combo"}. Escolha profissional, data e horário em segundos.`;
+    document.title = pageTitle;
+
+    const setMeta = (selector, attr, val) => {
+      let el = document.querySelector(selector);
+      if (el) el.setAttribute(attr, val);
+    };
+    setMeta('meta[name="description"]', "content", pageDesc);
+    setMeta('meta[property="og:title"]', "content", pageTitle);
+    setMeta('meta[property="og:description"]', "content", pageDesc);
+    setMeta('meta[name="twitter:title"]', "content", pageTitle);
+    setMeta('meta[name="twitter:description"]', "content", pageDesc);
+
+    const schemaId = "barbershop-jsonld-schema";
+    let scriptEl = document.getElementById(schemaId);
+    if (!scriptEl) {
+      scriptEl = document.createElement("script");
+      scriptEl.id = schemaId;
+      scriptEl.type = "application/ld+json";
+      document.head.appendChild(scriptEl);
+    }
+    const schemaData = {
+      "@context": "https://schema.org",
+      "@type": "Barbershop",
+      name: shop.name,
+      url: window.location.href,
+      description: pageDesc,
+      priceRange: "$$",
+      ...(shop.whatsapp?.phone ? { telephone: `+${String(shop.whatsapp.phone).replace(/\D/g, "")}` } : {}),
+      hasOfferCatalog: {
+        "@type": "OfferCatalog",
+        name: "Serviços de Barbearia",
+        itemListElement: (shop.services || []).map((s) => ({
+          "@type": "Offer",
+          itemOffered: {
+            "@type": "Service",
+            name: s.name,
+          },
+          price: Number(s.price || 0).toFixed(2),
+          priceCurrency: "BRL",
+        })),
+      },
+    };
+    scriptEl.textContent = JSON.stringify(schemaData);
+  }, [shop]);
 
   useEffect(() => {
     let active = true;
@@ -89,7 +145,7 @@ export default function PublicBooking() {
     try {
       const response = await api.post(`/public/shops/${slug}/appointments`, {
         barber_id: barberId, service_id: serviceId, date, time,
-        client_name: name.trim(), client_phone: phone.trim(),
+        client_name: name.trim(), client_phone: phone.trim(), website,
       });
       setBooked(response.data.appointment);
       setDone(true);
@@ -132,8 +188,11 @@ export default function PublicBooking() {
             : <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">{slots.map(s=><button type="button" key={s.time} disabled={!s.available || loading} onClick={()=>setTime(s.time)} className={`py-2 rounded-lg border text-sm ${!s.available ? "opacity-30 line-through" : time===s.time ? "border-amber-500 bg-amber-500/10 text-amber-400" : "border-border"}`}>{s.time}</button>)}</div>}
         </div>}
         <div className="grid sm:grid-cols-2 gap-4">
-          <div><label className="text-sm font-medium">Seu nome</label><input value={name} onChange={(e)=>setName(e.target.value)} className={input+" mt-1"} placeholder="Nome completo" /></div>
-          <div><label className="text-sm font-medium">Telefone / WhatsApp</label><input value={phone} onChange={(e)=>setPhone(e.target.value)} className={input+" mt-1"} placeholder="(41) 99999-9999" /></div>
+          <div><label className="text-sm font-medium">Seu nome</label><input maxLength={120} value={name} onChange={(e)=>setName(e.target.value)} className={input+" mt-1"} placeholder="Nome completo" /></div>
+          <div><label className="text-sm font-medium">Telefone / WhatsApp</label><input maxLength={30} value={phone} onChange={(e)=>setPhone(e.target.value)} className={input+" mt-1"} placeholder="(41) 99999-9999" /></div>
+        </div>
+        <div aria-hidden="true" className="hidden">
+          <label>Website<input tabIndex={-1} autoComplete="off" value={website} onChange={(e)=>setWebsite(e.target.value)} /></label>
         </div>
         <button onClick={submit} disabled={loading || !time} className={btnPrimary+" w-full"}>{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarCheck className="h-4 w-4" />} Confirmar agendamento</button>
       </div>}

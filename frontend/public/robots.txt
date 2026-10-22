@@ -1,0 +1,40 @@
+User-agent: *
+Allow: /
+Allow: /login
+Allow: /agendar/
+Disallow: /api/
+Disallow: /dashboard
+Disallow: /agendamentos
+Disallow: /barbeiros
+Disallow: /servicos
+Disallow: /clientes
+Disallow: /fidelizados
+Disallow: /planos
+Disallow: /relatorios
+Disallow: /whatsapp
+Disallow: /plataforma
+
+# AI Search Crawlers (GEO Optimization)
+User-agent: GPTBot
+Allow: /
+Allow: /agendar/
+Disallow: /api/
+Disallow: /plataforma
+
+User-agent: OAI-SearchBot
+Allow: /
+Allow: /agendar/
+
+User-agent: PerplexityBot
+Allow: /
+Allow: /agendar/
+
+User-agent: ClaudeBot
+Allow: /
+Allow: /agendar/
+
+User-agent: Google-Extended
+Allow: /
+Allow: /agendar/
+
+Sitemap: /sitemap.xml

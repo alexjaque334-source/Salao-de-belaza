@@ -1,0 +1,15 @@
+# BarberStudio — Plataforma de Gestão e Agendamento Online para Barbearias
+
+> O BarberStudio é um sistema SaaS multi-barbearia desenvolvido para gestão completa de barbearias no Brasil, com agendamento online 24h, controle de comissões de barbeiros, clubes de assinatura recorrente, programa de fidelidade VIP e confirmação via WhatsApp.
+
+## Principais Funcionalidades
+- **Agendamento Público Online (`/agendar/:slug`)**: Link exclusivo para cada barbearia onde clientes escolhem serviço, profissional, data e horário em tempo real sem necessidade de cadastro prévio ou download de aplicativo.
+- **Gestão Multi-Barbearia Isolada**: Cada barbearia opera com seu próprio código, equipe de barbeiros, catálogo de serviços, horários de expediente, CRM de clientes e relatórios financeiros.
+- **Controle de Comissões e Relatórios**: Cálculo automático de faturamento e comissão por profissional, com exportação em PDF no plano Premium.
+- **Clube de Assinatura e Fidelidade**: Criação de planos recorrentes mensais para clientes e acúmulo de pontos (níveis Bronze, Silver, Gold e VIP Black).
+- **Integração com WhatsApp e E-mail**: Confirmação imediata de agendamentos e lembretes automáticos diários.
+
+## Planos Comerciais
+- **Essencial (R$ 59,90/mês)**: Até 3 profissionais, 7 serviços e 5 planos de clientes.
+- **Profissional (R$ 99,90/mês)**: Até 5 profissionais, 10 serviços, 7 planos de clientes e link público de agendamento online.
+- **Premium (R$ 149,90/mês)**: Profissionais, serviços e planos ilimitados, link público de agendamento, confirmação via WhatsApp e relatórios mensais em PDF.

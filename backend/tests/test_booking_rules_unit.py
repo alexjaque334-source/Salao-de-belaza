@@ -60,6 +60,13 @@ class MemoryCollection:
             document[key] = document.get(key, 0) + value
         return SimpleNamespace(matched_count=1, upserted_id=upserted_id)
 
+    async def delete_one(self, query, session=None):
+        for idx, doc in enumerate(self.documents):
+            if self._matches(doc, query):
+                del self.documents[idx]
+                return SimpleNamespace(deleted_count=1)
+        return SimpleNamespace(deleted_count=0)
+
 
 class MemoryDatabase:
     def __init__(self, collections=None):
@@ -444,6 +451,55 @@ class BookingRulesUnitTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(conflicts), 1)
         self.assertEqual(conflicts[0].status_code, 409)
         self.assertEqual(len(_server.db.appointments.documents), 1)
+
+    def test_client_ip_prefers_edge_headers_and_resists_xff_prepend_spoofing(self):
+        fake_req = SimpleNamespace(
+            headers={
+                "x-forwarded-for": "1.2.3.4, 203.0.113.99",
+                "cf-connecting-ip": "198.51.100.42",
+            },
+            client=SimpleNamespace(host="10.0.0.1"),
+        )
+        self.assertEqual(_server.client_ip(fake_req), "198.51.100.42")
+
+        fake_xff_only = SimpleNamespace(
+            headers={"x-forwarded-for": "1.2.3.4, 203.0.113.99"},
+            client=SimpleNamespace(host="10.0.0.1"),
+        )
+        self.assertEqual(_server.client_ip(fake_xff_only), "203.0.113.99")
+
+    async def test_public_booking_blocks_honeypot_and_rate_limits_phone_spam(self):
+        transport = httpx.ASGITransport(app=_server.app)
+        honeypot_payload = {
+            "barber_id": str(self.barber_oid),
+            "service_id": str(self.service_oid),
+            "date": "2026-10-12",
+            "time": "09:00",
+            "client_name": "Bot User",
+            "client_phone": "11912345678",
+            "website": "https://spam.example.com",
+        }
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            bot_resp = await client.post("/api/public/shops/test-shop/appointments", json=honeypot_payload)
+            self.assertEqual(bot_resp.status_code, 400)
+            self.assertEqual(bot_resp.headers.get("x-content-type-options"), "nosniff")
+            self.assertEqual(bot_resp.headers.get("x-frame-options"), "DENY")
+
+        # Pre-seed 5 recent attempts for the same phone to verify the 6th is blocked with 429
+        for _ in range(5):
+            await _server.bump_attempt(f"pub_appt_phone:{self.shop_id}:11912345678")
+
+        valid_payload = {
+            "barber_id": str(self.barber_oid),
+            "service_id": str(self.service_oid),
+            "date": "2026-10-12",
+            "time": "09:00",
+            "client_name": "Real Client",
+            "client_phone": "11912345678",
+        }
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            rate_resp = await client.post("/api/public/shops/test-shop/appointments", json=valid_payload)
+            self.assertEqual(rate_resp.status_code, 429)
 
 
 if __name__ == "__main__":

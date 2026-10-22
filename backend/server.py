@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -6,6 +6,7 @@ import os
 import logging
 import secrets
 import string
+import ipaddress
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional
@@ -201,20 +202,45 @@ async def clear_attempts(identifier: str):
     await db.login_attempts.delete_one({"_id": identifier})
 
 
-def client_ip(request: Request) -> str:
+def _valid_ip(candidate: str) -> Optional[str]:
+    c = (candidate or "").strip()
+    if not c:
+        return None
+    try:
+        return str(ipaddress.ip_address(c))
+    except ValueError:
+        return None
+
+
+def client_ip(request: Optional[Request]) -> str:
+    if request is None:
+        return "unknown"
+    # Prefer edge-verified headers set by Cloudflare / Vercel before X-Forwarded-For
+    for header in ("cf-connecting-ip", "x-real-ip", "x-vercel-forwarded-for"):
+        verified = _valid_ip(request.headers.get(header, "").split(",")[0])
+        if verified:
+            return verified
+    # In X-Forwarded-For, client-supplied values are prepended while the trusted reverse
+    # proxy appends the actual connecting IP at the rightmost position.
     fwd = request.headers.get("x-forwarded-for", "")
     if fwd:
-        return fwd.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+        parts = [p.strip() for p in fwd.split(",") if p.strip()]
+        for candidate in reversed(parts):
+            valid = _valid_ip(candidate)
+            if valid:
+                return valid
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
 
 
-def _decode_token(request: Request) -> dict:
+def _decode_token(request: Request, cookie_name: str = "access_token") -> dict:
     token = None
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         token = auth_header[7:]
     if not token:
-        token = request.cookies.get("access_token")
+        token = request.cookies.get(cookie_name) or request.cookies.get("access_token")
     if not token:
         raise HTTPException(status_code=401, detail="Não autenticado")
     try:
@@ -229,7 +255,7 @@ def _decode_token(request: Request) -> dict:
 
 
 async def get_current_user_raw(request: Request) -> dict:
-    payload = _decode_token(request)
+    payload = _decode_token(request, cookie_name="access_token")
     if payload.get("kind") == "super_admin":
         raise HTTPException(status_code=403, detail="Use o painel da plataforma")
     user = await db.users.find_one({"_id": safe_object_id(payload["sub"], "Token")})
@@ -264,7 +290,7 @@ def create_platform_token(admin_id: str, email: str) -> str:
 
 
 async def get_super_admin(request: Request) -> dict:
-    payload = _decode_token(request)
+    payload = _decode_token(request, cookie_name="platform_token")
     if payload.get("kind") != "super_admin":
         raise HTTPException(status_code=403, detail="Acesso restrito à plataforma")
     admin = await db.platform_admins.find_one({"_id": safe_object_id(payload["sub"], "Token")})
@@ -397,8 +423,9 @@ class PublicAppointmentIn(BaseModel):
     service_id: str
     date: str
     time: str
-    client_name: str
-    client_phone: str
+    client_name: str = Field(..., max_length=120)
+    client_phone: str = Field(..., max_length=30)
+    website: Optional[str] = ""
 
 
 class StatusIn(BaseModel):
@@ -544,7 +571,9 @@ async def public_availability(slug: str, barber_id: str, date: str, service_id: 
 
 
 @api_router.post("/public/shops/{slug}/appointments")
-async def public_create_appointment(slug: str, data: PublicAppointmentIn):
+async def public_create_appointment(slug: str, data: PublicAppointmentIn, request: Request = None):
+    if (data.website or "").strip():
+        raise HTTPException(400, "Requisição inválida")
     shop = await _public_shop(slug)
     sid = oid(shop["_id"])
     name = data.client_name.strip()
@@ -554,6 +583,11 @@ async def public_create_appointment(slug: str, data: PublicAppointmentIn):
         raise HTTPException(400, "Informe seu nome")
     if len(phone_normalized) < 10 or len(phone_normalized) > 13:
         raise HTTPException(400, "Informe um telefone válido")
+    ip_ident = f"pub_appt_ip:{sid}:{client_ip(request)}"
+    phone_ident = f"pub_appt_phone:{sid}:{phone_normalized}"
+    if request is not None:
+        await rate_limit(ip_ident, max_attempts=10, window_minutes=15)
+    await rate_limit(phone_ident, max_attempts=5, window_minutes=15)
     barber = await db.barbers.find_one({"_id": safe_object_id(data.barber_id, "Barbeiro"), "shop_id": sid, "active": {"$ne": False}})
     service = await db.services.find_one({"_id": safe_object_id(data.service_id, "Serviço"), "shop_id": sid, "active": {"$ne": False}})
     if not barber or not service:
@@ -594,6 +628,9 @@ async def public_create_appointment(slug: str, data: PublicAppointmentIn):
     result, doc = await _create_booking_atomically(
         sid, data.barber_id, data.date, data.time, duration, create_booking
     )
+    if request is not None:
+        await bump_attempt(ip_ident)
+    await bump_attempt(phone_ident)
     out = dict(doc)
     out["id"] = oid(result.inserted_id)
     await email_service.safe_send_confirmation(out)
@@ -647,14 +684,18 @@ async def request_access(data: ShopCreateIn, request: Request):
 
 
 @api_router.post("/auth/login")
-async def login(data: LoginIn, request: Request):
-    ident = f"login:{client_ip(request)}:{data.shop_code.strip().upper()}:{data.email.lower()}"
-    await rate_limit(ident)
-    shop = await db.shops.find_one({"code": data.shop_code.strip().upper()})
+async def login(data: LoginIn, request: Request, response: Response = None):
+    shop_code_norm = data.shop_code.strip().upper()
     email = data.email.lower()
+    ident = f"login:{client_ip(request)}:{shop_code_norm}:{email}"
+    acct_ident = f"login_acct:{shop_code_norm}:{email}"
+    await rate_limit(ident)
+    await rate_limit(acct_ident, max_attempts=15, window_minutes=15)
+    shop = await db.shops.find_one({"code": shop_code_norm})
     user = await db.users.find_one({"shop_id": oid(shop["_id"]), "email": email}) if shop else None
     if not shop or not user or not verify_password(data.password, user["password_hash"]):
         await bump_attempt(ident)
+        await bump_attempt(acct_ident)
         raise HTTPException(status_code=401, detail="Barbearia, e-mail ou senha inválidos")
     # Client accounts are kept only as CRM records for now; the customer portal is disabled.
     if user.get("role") == "client":
@@ -662,7 +703,25 @@ async def login(data: LoginIn, request: Request):
     if user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Perfil sem acesso ao painel.")
     await clear_attempts(ident)
-    return await auth_response(user)
+    await clear_attempts(acct_ident)
+    auth_data = await auth_response(user)
+    if response is not None:
+        response.set_cookie(
+            key="access_token",
+            value=auth_data["token"],
+            httponly=True,
+            samesite="lax",
+            secure=IS_PRODUCTION,
+            max_age=7 * 86400,
+            path="/",
+        )
+    return auth_data
+
+
+@api_router.post("/auth/logout")
+async def logout(response: Response):
+    response.delete_cookie(key="access_token", path="/", samesite="lax")
+    return {"ok": True}
 
 
 @api_router.get("/auth/me")
@@ -1544,16 +1603,37 @@ def _shop_admin_summary(shop: dict, full: bool = False) -> dict:
 
 
 @api_router.post("/platform/login")
-async def platform_login(data: PlatformLoginIn, request: Request):
-    ident = f"plogin:{client_ip(request)}:{data.email.lower()}"
+async def platform_login(data: PlatformLoginIn, request: Request, response: Response = None):
+    email = data.email.lower()
+    ident = f"plogin:{client_ip(request)}:{email}"
+    acct_ident = f"plogin_acct:{email}"
     await rate_limit(ident, max_attempts=6, window_minutes=15)
-    admin = await db.platform_admins.find_one({"email": data.email.lower()})
+    await rate_limit(acct_ident, max_attempts=10, window_minutes=15)
+    admin = await db.platform_admins.find_one({"email": email})
     if not admin or not verify_password(data.password, admin["password_hash"]):
         await bump_attempt(ident)
+        await bump_attempt(acct_ident)
         raise HTTPException(status_code=401, detail="E-mail ou senha inválidos")
     await clear_attempts(ident)
+    await clear_attempts(acct_ident)
     token = create_platform_token(oid(admin["_id"]), admin["email"])
+    if response is not None:
+        response.set_cookie(
+            key="platform_token",
+            value=token,
+            httponly=True,
+            samesite="lax",
+            secure=IS_PRODUCTION,
+            max_age=2 * 86400,
+            path="/",
+        )
     return {"token": token, "admin": {"email": admin["email"], "name": admin.get("name", "Super Admin")}}
+
+
+@api_router.post("/platform/logout")
+async def platform_logout(response: Response):
+    response.delete_cookie(key="platform_token", path="/", samesite="lax")
+    return {"ok": True}
 
 
 @api_router.get("/platform/me")
@@ -1861,17 +1941,34 @@ app.include_router(api_router)
 cors_raw = os.environ.get("CORS_ORIGINS", "").strip()
 if IS_PRODUCTION and not cors_raw:
     logger.warning("CORS_ORIGINS is not configured in production; cross-origin browser requests are disabled.")
-cors_origins = [origin.strip() for origin in cors_raw.split(",") if origin.strip()]
+cors_origins = [origin.strip() for origin in cors_raw.split(",") if origin.strip() and origin.strip() != "*"]
+cors_origin_regex = None
 if not IS_PRODUCTION and not cors_origins:
-    cors_origins = ["*"]
+    cors_origin_regex = r"^https?://.*"
 
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
     allow_origins=cors_origins,
+    allow_origin_regex=cors_origin_regex,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    response.headers.setdefault("X-XSS-Protection", "0")
+    if IS_PRODUCTION:
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload"
+        )
+    return response
 
 
 # ---------------- Startup / indexes / example shop ----------------
@@ -1884,6 +1981,21 @@ async def seed():
         pass
     try:
         await db.shops.create_index("code", unique=True)
+        await db.shops.create_index("public_slug", unique=True, sparse=True)
+        await db.appointments.create_index(
+            [("shop_id", 1), ("barber_id", 1), ("date", 1), ("status", 1)],
+            name="shop_barber_date_status_idx",
+        )
+        await db.appointments.create_index(
+            [("date", 1), ("status", 1), ("reminder_sent", 1)],
+            name="reminders_lookup_idx",
+        )
+        await db.barbers.create_index([("shop_id", 1), ("active", 1)], name="shop_active_barbers_idx")
+        await db.services.create_index([("shop_id", 1), ("active", 1)], name="shop_active_services_idx")
+        await db.users.create_index(
+            [("shop_id", 1), ("role", 1), ("phone_normalized", 1)],
+            name="shop_client_phone_idx",
+        )
         # CRM clients intentionally have no e-mail. A normal unique compound index
         # treats missing e-mail values as duplicates, blocking the 2nd CRM client.
         try:

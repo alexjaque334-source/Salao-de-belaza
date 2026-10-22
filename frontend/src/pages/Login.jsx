@@ -73,14 +73,22 @@ export default function Login() {
             "linear-gradient(to right, rgba(10,10,12,0.4), rgba(10,10,12,0.95)), url('https://images.unsplash.com/photo-1585747860715-2ba37e788b70?crop=entropy&cs=srgb&fm=jpg&q=85&w=1400')",
         }}
       >
-        <div className="absolute bottom-0 p-12">
-          <div className={overline}>Gestão Premium de Barbearia</div>
-          <h1 className="font-display text-5xl font-extrabold mt-3 leading-tight">
-            Estilo, precisão<br />e <span className="text-amber-500">fidelidade</span>.
-          </h1>
-          <p className="text-zinc-400 mt-4 max-w-md">
-            Cada barbearia com seus próprios barbeiros, clientes e agenda — totalmente separados.
-          </p>
+        <div className="absolute bottom-0 p-12 space-y-6">
+          <div>
+            <div className={overline}>Gestão Premium de Barbearia</div>
+            <h1 className="font-display text-5xl font-extrabold mt-3 leading-tight">
+              Estilo, precisão<br />e <span className="text-amber-500">fidelidade</span>.
+            </h1>
+            <p className="text-zinc-300 mt-4 max-w-md">
+              Plataforma completa de agendamento online 24h, controle de comissões de barbeiros, clubes de assinatura e fidelidade com isolamento total por barbearia.
+            </p>
+          </div>
+          <ul className="grid grid-cols-2 gap-3 text-xs text-zinc-300 max-w-lg">
+            <li className="rounded-lg border border-white/10 bg-black/40 px-3 py-2">✓ Link público de agendamento 24h</li>
+            <li className="rounded-lg border border-white/10 bg-black/40 px-3 py-2">✓ Cálculo automático de comissões</li>
+            <li className="rounded-lg border border-white/10 bg-black/40 px-3 py-2">✓ Clube de assinatura e fidelidade</li>
+            <li className="rounded-lg border border-white/10 bg-black/40 px-3 py-2">✓ Confirmação rápida via WhatsApp</li>
+          </ul>
         </div>
       </div>
 

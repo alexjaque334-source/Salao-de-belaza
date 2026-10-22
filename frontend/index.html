@@ -4,7 +4,29 @@
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="theme-color" content="#18181b" />
-        <meta name="description" content="BarberStudio — gestão completa para barbearias." />
+        <title>BarberStudio — Sistema de Gestão e Agendamento Online para Barbearias</title>
+        <meta name="description" content="BarberStudio é a plataforma completa para gestão de barbearias no Brasil: agendamento online 24h com link exclusivo, controle de comissões de barbeiros, clubes de assinatura, fidelidade e confirmação via WhatsApp." />
+        <meta name="keywords" content="sistema para barbearia, agendamento online barbearia, gestão de barbearia, software para barbearia, controle de comissões barbeiro, clube de assinatura barbearia, fidelidade barbearia, BarberStudio" />
+        <meta name="author" content="BarberStudio" />
+        <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+        <meta name="geo.region" content="BR" />
+        <meta name="geo.placename" content="Brasil" />
+
+        <!-- Open Graph / WhatsApp / Facebook / Instagram -->
+        <meta property="og:type" content="website" />
+        <meta property="og:locale" content="pt_BR" />
+        <meta property="og:site_name" content="BarberStudio" />
+        <meta property="og:title" content="BarberStudio — Sistema de Gestão e Agendamento Online para Barbearias" />
+        <meta property="og:description" content="Gerencie sua barbearia com precisão: agenda online 24h, comissões automáticas, planos de assinatura recorrente, programa de fidelidade e integração com WhatsApp." />
+        <meta property="og:image" content="/barberstudio-icon.svg" />
+        <meta property="og:image:alt" content="BarberStudio — Gestão Completa para Barbearias" />
+
+        <!-- Twitter Cards -->
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="BarberStudio — Sistema de Gestão e Agendamento Online para Barbearias" />
+        <meta name="twitter:description" content="Agendamento online 24h, controle de comissões, clube de assinatura e fidelidade para barbearias modernas." />
+        <meta name="twitter:image" content="/barberstudio-icon.svg" />
+
         <link rel="manifest" href="/manifest.webmanifest" />
         <link rel="icon" href="/barberstudio-icon.svg" type="image/svg+xml" />
         <link rel="apple-touch-icon" href="/barberstudio-icon.svg" />
@@ -14,85 +36,64 @@
         <meta name="apple-mobile-web-app-title" content="BarberStudio" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@600&display=swap" rel="stylesheet" />
-        <title>BarberStudio</title>
-        <script>window.addEventListener("error",function(e){if(e.error instanceof DOMException&&e.error.name==="DataCloneError"&&e.message&&e.message.includes("PerformanceServerTiming")){e.stopImmediatePropagation();e.preventDefault()}},true);</script>
-        <script src="https://assets.emergent.sh/scripts/emergent-main.js"></script>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+
+        <!-- Structured Data (Schema.org JSON-LD for SEO & GEO AI Search) -->
+        <script type="application/ld+json">
+        {
+          "@context": "https://schema.org",
+          "@graph": [
+            {
+              "@type": "SoftwareApplication",
+              "name": "BarberStudio",
+              "applicationCategory": "BusinessApplication",
+              "operatingSystem": "Web, iOS, Android (PWA)",
+              "inLanguage": "pt-BR",
+              "description": "Sistema SaaS multi-barbearia para gestão de agendamentos online, controle de profissionais e comissões, clubes de assinatura mensal, programa de pontos de fidelidade e confirmação via WhatsApp.",
+              "offers": {
+                "@type": "AggregateOffer",
+                "priceCurrency": "BRL",
+                "lowPrice": "59.90",
+                "highPrice": "149.90",
+                "offerCount": "3"
+              },
+              "featureList": [
+                "Agendamento online 24h por link exclusivo da barbearia",
+                "Cálculo automático de comissões por barbeiro",
+                "Gestão de planos e assinaturas mensais para clientes",
+                "Programa de fidelidade por pontuação e níveis VIP",
+                "Notificações por e-mail e confirmação via WhatsApp",
+                "Relatórios financeiros e exportação em PDF"
+              ]
+            },
+            {
+              "@type": "FAQPage",
+              "mainEntity": [
+                {
+                  "@type": "Question",
+                  "name": "Como funciona o agendamento online no BarberStudio?",
+                  "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Cada barbearia ativa recebe um link público exclusivo (/agendar/sua-barbearia) onde o cliente escolhe o serviço, profissional, data e horário disponível em tempo real sem precisar baixar aplicativo."
+                  }
+                },
+                {
+                  "@type": "Question",
+                  "name": "O BarberStudio separa os dados de cada barbearia?",
+                  "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Sim. O BarberStudio possui arquitetura multi-barbearia com isolamento total de dados: barbeiros, serviços, clientes, financeiro e agendamentos são estritamente independentes por barbearia."
+                  }
+                }
+              ]
+            }
+          ]
+        }
+        </script>
     </head>
     <body>
-        <noscript>You need to enable JavaScript to run this app.</noscript>
+        <noscript>Você precisa habilitar o JavaScript para utilizar o BarberStudio — Sistema de Gestão e Agendamento Online para Barbearias.</noscript>
         <div id="root"></div>
         <script type="module" src="/src/index.js"></script>
-        <script>
-            !(function (t, e) {
-                var o, n, p, r;
-                e.__SV ||
-                    ((window.posthog = e),
-                    (e._i = []),
-                    (e.init = function (i, s, a) {
-                        function g(t, e) {
-                            var o = e.split(".");
-                            2 == o.length && ((t = t[o[0]]), (e = o[1])),
-                                (t[e] = function () {
-                                    t.push(
-                                        [e].concat(
-                                            Array.prototype.slice.call(
-                                                arguments,
-                                                0,
-                                            ),
-                                        ),
-                                    );
-                                });
-                        }
-                        ((p = t.createElement("script")).type =
-                            "text/javascript"),
-                            (p.crossOrigin = "anonymous"),
-                            (p.async = !0),
-                            (p.src =
-                                s.api_host.replace(
-                                    ".i.posthog.com",
-                                    "-assets.i.posthog.com",
-                                ) + "/static/array.js"),
-                            (r =
-                                t.getElementsByTagName(
-                                    "script",
-                                )[0]).parentNode.insertBefore(p, r);
-                        var u = e;
-                        for (
-                            void 0 !== a ? (u = e[a] = []) : (a = "posthog"),
-                                u.people = u.people || [],
-                                u.toString = function (t) {
-                                    var e = "posthog";
-                                    return (
-                                        "posthog" !== a && (e += "." + a),
-                                        t || (e += " (stub)"),
-                                        e
-                                    );
-                                },
-                                u.people.toString = function () {
-                                    return u.toString(1) + ".people (stub)";
-                                },
-                                o =
-                                    "init me ws ys ps bs capture je Di ks register register_once register_for_session unregister unregister_for_session Ps getFeatureFlag getFeatureFlagPayload isFeatureEnabled reloadFeatureFlags updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures on onFeatureFlags onSurveysLoaded onSessionId getSurveys getActiveMatchingSurveys renderSurvey canRenderSurvey canRenderSurveyAsync identify setPersonProperties group resetGroups setPersonPropertiesForFlags resetPersonPropertiesForFlags setGroupPropertiesForFlags resetGroupPropertiesForFlags reset get_distinct_id getGroups get_session_id get_session_replay_url alias set_config startSessionRecording stopSessionRecording sessionRecordingStarted captureException loadToolbar get_property getSessionProperty Es $s createPersonProfile Is opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing clear_opt_in_out_capturing Ss debug xs getPageViewId captureTraceFeedback captureTraceMetric".split(
-                                        " ",
-                                    ),
-                                n = 0;
-                            n < o.length;
-                            n++
-                        )
-                            g(u, o[n]);
-                        e._i.push([i, s, a]);
-                    }),
-                    (e.__SV = 1));
-            })(document, window.posthog || []);
-            posthog.init("phc_DbsPb39SRc8z3EiQ6Dhj6ikv4H4rTKcht9d4sZSesceP", {
-                api_host: "https://ap.emergent.sh",
-                person_profiles: "identified_only", // or 'always' to create profiles for anonymous users as well,
-                session_recording: {
-                    recordCrossOriginIframes: true,
-                    capturePerformance: false,
-                },
-            });
-        </script>
     </body>
 </html>

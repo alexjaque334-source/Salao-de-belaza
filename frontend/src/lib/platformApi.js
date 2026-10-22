@@ -5,6 +5,7 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || window.location.origin;
 
 export const platformApi = axios.create({
   baseURL: `${BACKEND_URL.replace(/\/$/, "")}/api`,
+  withCredentials: true,
 });
 
 platformApi.interceptors.request.use((config) => {

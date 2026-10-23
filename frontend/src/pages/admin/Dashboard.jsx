@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
-  CalendarDays, DollarSign, Users, Crown, TrendingUp, Trophy, Clock,
+  CalendarDays, DollarSign, Users, Crown, TrendingUp, Trophy, Clock, Sparkles, ArrowRight,
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, Tooltip, CartesianGrid,
@@ -39,6 +40,31 @@ export default function Dashboard() {
   return (
     <div>
       <PageHeader eyebrow="Visão Geral" title="Painel da Barbearia" subtitle="Resumo do desempenho e próximos atendimentos." />
+
+      <div className="mb-6 rounded-2xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-amber-600/5 to-transparent p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-amber-500/20 text-amber-400 grid place-items-center shrink-0">
+            <Sparkles className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="font-display font-bold text-base text-foreground flex items-center gap-2">
+              Assistente CRM Ativo
+              <span className="text-[10px] uppercase font-bold tracking-wider bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full">
+                Copiloto
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Identifique clientes inativos (+45 dias), aniversariantes da semana e fidelizados para resgate com mensagens prontas para WhatsApp.
+            </p>
+          </div>
+        </div>
+        <Link
+          to="/assistente-crm"
+          className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-xs font-bold text-zinc-950 hover:bg-amber-400 transition-all shrink-0 self-start sm:self-auto shadow-md shadow-amber-900/30"
+        >
+          Abrir Assistente CRM <ArrowRight className="h-4 w-4" />
+        </Link>
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6" data-testid="dashboard-stats">
         <Stat icon={CalendarDays} label="Agendamentos Hoje" value={stats.appts_today} accent="bg-amber-500/10 text-amber-400" />

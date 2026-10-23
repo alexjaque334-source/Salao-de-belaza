@@ -90,6 +90,7 @@ def serialize_user(doc, *, include_private_notes: bool = False) -> dict:
         "name": doc.get("name"),
         "role": doc.get("role"),
         "phone": doc.get("phone", ""),
+        "birthdate": doc.get("birthdate", ""),
         "points": points,
         "tier": tier_for_points(points),
         "total_spend": doc.get("total_spend", 0),
@@ -450,6 +451,7 @@ class ClientIn(BaseModel):
     name: str
     phone: str
     notes: Optional[str] = ""
+    birthdate: Optional[str] = ""
 
 
 class LoyaltyIn(BaseModel):
@@ -1304,7 +1306,7 @@ async def create_client(data: ClientIn, admin: dict = Depends(require_admin)):
     doc = {
         "name": name, "role": "client", "phone": data.phone.strip(),
         "phone_normalized": phone, "shop_id": sid, "crm_only": True,
-        "points": 0, "total_spend": 0, "preferred_barber": "", "notes": (data.notes or "").strip(),
+        "points": 0, "total_spend": 0, "preferred_barber": "", "notes": (data.notes or "").strip(), "birthdate": (data.birthdate or "").strip(), "birthdate": (data.birthdate or "").strip(),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     res = await db.users.insert_one(doc)
@@ -1935,6 +1937,10 @@ async def platform_delete_plan(plan_id: str, _: dict = Depends(get_super_admin))
     await db.platform_plans.delete_one({"_id": pid})
     return {"ok": True}
 
+
+from .routers.crm_assistant import build_crm_router
+crm_router = build_crm_router(db, safe_object_id, oid, require_admin)
+api_router.include_router(crm_router)
 
 app.include_router(api_router)
 

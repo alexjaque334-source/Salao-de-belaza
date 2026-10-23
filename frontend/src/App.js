@@ -14,6 +14,7 @@ import Loyalty from "@/pages/admin/Loyalty";
 import Plans from "@/pages/admin/Plans";
 import Reports from "@/pages/admin/Reports";
 import WhatsAppSettings from "@/pages/admin/WhatsAppSettings";
+import CrmAssistant from "@/pages/admin/CrmAssistant";
 import PlatformLogin from "@/pages/platform/PlatformLogin";
 import PlatformDashboard from "@/pages/platform/PlatformDashboard";
 import PublicBooking from "@/pages/PublicBooking";
@@ -60,6 +61,7 @@ function AppRoutes() {
         <Route path="/planos" element={<Plans />} />
         <Route path="/relatorios" element={<Reports />} />
         <Route path="/whatsapp" element={<WhatsAppSettings />} />
+        <Route path="/assistente-crm" element={<CrmAssistant />} />
       </Route>
 
 

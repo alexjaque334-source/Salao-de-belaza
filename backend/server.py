@@ -531,15 +531,19 @@ async def _public_shop(slug: str):
 
 
 async def _public_whatsapp_settings(shop_id: str) -> dict:
+    doc = await db.whatsapp_integrations.find_one({"shop_id": shop_id})
+    phone = doc.get("phone_normalized", "") if doc else ""
+    plans_enabled = bool(doc.get("plans_enabled", True)) if doc else True
+
     plan = await _shop_platform_plan(shop_id)
     if not plan or plan.get("name", "").strip().lower() != "premium":
-        return {"booking_enabled": False, "phone": ""}
-    doc = await db.whatsapp_integrations.find_one({"shop_id": shop_id})
+        return {"booking_enabled": False, "phone": phone, "plans_enabled": plans_enabled}
     if not doc or not doc.get("booking_enabled"):
-        return {"booking_enabled": False, "phone": ""}
+        return {"booking_enabled": False, "phone": phone, "plans_enabled": plans_enabled}
     return {
         "booking_enabled": True,
-        "phone": doc.get("phone_normalized", ""),
+        "phone": phone,
+        "plans_enabled": plans_enabled,
     }
 
 
@@ -549,10 +553,27 @@ async def public_shop(slug: str):
     sid = oid(shop["_id"])
     barbers = await db.barbers.find({"shop_id": sid, "active": {"$ne": False}}).to_list(100)
     services = await db.services.find({"shop_id": sid, "active": {"$ne": False}}).to_list(100)
+    client_plans = await db.plans.find({"shop_id": sid}).to_list(100)
+    wa_settings = await _public_whatsapp_settings(sid)
+    show_plans = bool(wa_settings.get("plans_enabled", True)) and len(client_plans) > 0
+
     return {
         "name": shop.get("name", ""),
         "slug": shop.get("public_slug", ""),
-        "whatsapp": await _public_whatsapp_settings(sid),
+        "whatsapp": wa_settings,
+        "show_plans": show_plans,
+        "plans": [
+            {
+                "id": oid(p["_id"]),
+                "name": p.get("name", ""),
+                "price": p.get("price", 0),
+                "description": p.get("description", ""),
+                "cuts_per_month": p.get("cuts_per_month", ""),
+                "features": p.get("features", []),
+                "recommended": p.get("recommended", False),
+            }
+            for p in client_plans
+        ],
         "barbers": [{"id": oid(b["_id"]), "name": b.get("name", ""), "specialty": b.get("specialty", "")} for b in barbers],
         "services": [{"id": oid(x["_id"]), "name": x.get("name", ""), "duration": x.get("duration", 30), "price": x.get("price", 0)} for x in services],
     }

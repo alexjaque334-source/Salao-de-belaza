@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  CalendarDays, DollarSign, Users, Crown, TrendingUp, Trophy, Clock, Sparkles, ArrowRight,
+  CalendarDays, DollarSign, Users, Crown, TrendingUp, Trophy, Clock, Sparkles, ArrowRight, MessageCircle,
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, Tooltip, CartesianGrid,
@@ -128,21 +128,42 @@ export default function Dashboard() {
           <div className="text-sm text-muted-foreground py-6 text-center">Nenhum agendamento futuro.</div>
         ) : (
           <div className="space-y-2">
-            {stats.upcoming.map((a) => (
-              <div key={a.id} className="flex items-center justify-between py-3 px-4 rounded-xl bg-secondary/40 border border-border">
-                <div className="flex items-center gap-4">
-                  <div className="text-center min-w-[52px]">
-                    <div className="font-display font-bold text-amber-400">{a.time}</div>
-                    <div className="text-[10px] text-muted-foreground">{a.date.split("-").reverse().slice(0, 2).join("/")}</div>
+            {stats.upcoming.map((a) => {
+              let digits = (a.client_phone || "").replace(/\D/g, "");
+              if (digits && digits.length <= 11 && !digits.startsWith("55")) digits = "55" + digits;
+              const nome = (a.client_name || "").split(" ")[0];
+              const msg = `Olá ${nome}! 👋 Lembrete do seu horário na BarberStudio hoje às ${a.time} (${a.service_name} com ${a.barber_name}). Tudo confirmado? Até logo! ✂️`;
+              const waUrl = digits ? `https://wa.me/${digits}?text=${encodeURIComponent(msg)}` : null;
+
+              return (
+                <div key={a.id} className="flex items-center justify-between py-3 px-4 rounded-xl bg-secondary/40 border border-border">
+                  <div className="flex items-center gap-4">
+                    <div className="text-center min-w-[52px]">
+                      <div className="font-display font-bold text-amber-400">{a.time}</div>
+                      <div className="text-[10px] text-muted-foreground">{a.date.split("-").reverse().slice(0, 2).join("/")}</div>
+                    </div>
+                    <div>
+                      <div className="font-semibold text-sm">{a.client_name}</div>
+                      <div className="text-xs text-muted-foreground">{a.service_name} • {a.barber_name}</div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="font-semibold text-sm">{a.client_name}</div>
-                    <div className="text-xs text-muted-foreground">{a.service_name} • {a.barber_name}</div>
+                  <div className="flex items-center gap-2">
+                    <span className={badge(statusColors[a.status])}>{a.status}</span>
+                    {waUrl && a.status === "Confirmado" && (
+                      <a
+                        href={waUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Enviar lembrete WhatsApp"
+                        className="p-1.5 rounded-lg text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                      >
+                        <MessageCircle className="h-4 w-4" />
+                      </a>
+                    )}
                   </div>
                 </div>
-                <span className={badge(statusColors[a.status])}>{a.status}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

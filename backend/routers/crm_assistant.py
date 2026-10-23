@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone, timedelta
@@ -53,28 +53,50 @@ def build_crm_router(db, safe_object_id, oid, require_admin):
 
         # 1. Fetch clients of the shop
         clients = await db.users.find({"role": "client", "shop_id": sid}).to_list(1500)
-        client_ids = [oid(c["_id"]) for c in clients]
 
-        # 2. Fetch appointments of the shop to find the last visit for each client
+        # 2. Fetch appointments of the shop
         appts = await db.appointments.find({
             "shop_id": sid,
             "status": {"$in": ["Confirmado", "Concluído"]},
         }).sort("date", -1).to_list(5000)
 
         last_visit_by_client: Dict[str, Dict[str, Any]] = {}
-        recent_yesterday_today: List[Dict[str, Any]] = []
-
-        yesterday_str = (today_date - timedelta(days=1)).isoformat()
+        today_reminders: List[Dict[str, Any]] = []
 
         for a in appts:
             cid = a.get("client_id")
             if cid and cid not in last_visit_by_client:
                 last_visit_by_client[cid] = a
 
-            # Check post-visit feedback candidates (yesterday or today)
-            if a.get("date") in (yesterday_str, today_str) and a.get("status") == "Concluído":
-                if cid:
-                    recent_yesterday_today.append(a)
+            # Check today's active appointments for anti-no-show reminders
+            if a.get("date") == today_str and a.get("status") == "Confirmado":
+                client_name = a.get("client_name") or "Cliente"
+                first = _first_name(client_name)
+                phone = a.get("client_phone") or ""
+                time_slot = a.get("time", "")
+                barber_name = a.get("barber_name", "nosso profissional")
+                service_name = a.get("service_name", "seu corte")
+
+                msg_2h = (
+                    f"Fala, {first}! Tudo bem? 💈\n"
+                    f"Passando para confirmar seu horário hoje às {time_slot} na {shop_name}.\n"
+                    f"Serviço: {service_name} com {barber_name}.\n\n"
+                    f"Tudo certo para você? Caso precise de algum ajuste ou remarcação, nos avise por aqui.\n"
+                    f"Até já! ✂️"
+                )
+                today_reminders.append({
+                    "appointment_id": oid(a["_id"]),
+                    "client_id": cid,
+                    "name": client_name,
+                    "phone": phone,
+                    "time": time_slot,
+                    "barber_name": barber_name,
+                    "service_name": service_name,
+                    "reminder_sent": bool(a.get("reminder_2h_sent")),
+                    "reminder_at": a.get("reminder_2h_at"),
+                    "suggested_message": msg_2h,
+                    "whatsapp_url": _make_whatsapp_url(phone, msg_2h),
+                })
 
         # 3. Categorize clients
         inactive_clients = []
@@ -117,19 +139,18 @@ def build_crm_router(db, safe_object_id, oid, require_admin):
                 except Exception:
                     pass
 
-            # Birthdays (matching MM-DD or within next 7 days)
+            # Birthdays
             if birthdate:
                 try:
-                    # Accepts YYYY-MM-DD or DD/MM or DD/MM/YYYY
                     b_clean = birthdate.replace("/", "-")
                     parts = b_clean.split("-")
                     b_month_day = None
                     if len(parts) == 3:
-                        if len(parts[0]) == 4:  # YYYY-MM-DD
+                        if len(parts[0]) == 4:
                             b_month_day = f"{parts[1].zfill(2)}-{parts[2].zfill(2)}"
-                        else:  # DD-MM-YYYY
+                        else:
                             b_month_day = f"{parts[1].zfill(2)}-{parts[0].zfill(2)}"
-                    elif len(parts) == 2:  # DD-MM
+                    elif len(parts) == 2:
                         b_month_day = f"{parts[1].zfill(2)}-{parts[0].zfill(2)}"
 
                     if b_month_day:
@@ -153,7 +174,7 @@ def build_crm_router(db, safe_object_id, oid, require_admin):
                 except Exception:
                     pass
 
-            # Loyalty (100+ points free cut available, or 80-99 points close to reward)
+            # Loyalty
             if points >= 80:
                 has_reward = points >= 100
                 if has_reward:
@@ -181,7 +202,7 @@ def build_crm_router(db, safe_object_id, oid, require_admin):
                     "whatsapp_url": _make_whatsapp_url(phone, msg),
                 })
 
-        # Sort lists by relevance
+        today_reminders.sort(key=lambda x: x["time"])
         inactive_clients.sort(key=lambda x: x["days_inactive"], reverse=True)
         loyalty_clients.sort(key=lambda x: x["points"], reverse=True)
 
@@ -189,15 +210,32 @@ def build_crm_router(db, safe_object_id, oid, require_admin):
             "shop_name": shop_name,
             "booking_link": booking_link,
             "stats": {
+                "today_reminders_count": len(today_reminders),
                 "inactive_count": len(inactive_clients),
                 "birthdays_count": len(birthday_clients),
                 "loyalty_count": len(loyalty_clients),
-                "total_opportunities": len(inactive_clients) + len(birthday_clients) + len(loyalty_clients),
+                "total_opportunities": len(today_reminders) + len(inactive_clients) + len(birthday_clients) + len(loyalty_clients),
             },
+            "today_reminders": today_reminders,
             "inactive_clients": inactive_clients[:50],
             "birthday_clients": birthday_clients[:50],
             "loyalty_clients": loyalty_clients[:50],
         }
+
+    @router.post("/appointments/{appt_id}/mark-reminded")
+    async def mark_appointment_reminded(appt_id: str, admin: dict = Depends(require_admin)):
+        sid = admin["shop_id"]
+        appt_oid = safe_object_id(appt_id, "Agendamento")
+        appt = await db.appointments.find_one({"_id": appt_oid, "shop_id": sid})
+        if not appt:
+            raise HTTPException(404, "Agendamento não encontrado")
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        await db.appointments.update_one(
+            {"_id": appt_oid},
+            {"$set": {"reminder_2h_sent": True, "reminder_2h_at": now_iso}}
+        )
+        return {"ok": True, "reminder_2h_at": now_iso}
 
     @router.post("/generate-custom")
     async def generate_custom_message(data: CustomMessageIn, admin: dict = Depends(require_admin)):

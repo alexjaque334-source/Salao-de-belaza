@@ -152,7 +152,26 @@ export default function Appointments() {
                   <td className="px-5 py-3">
                     <div className="flex items-center justify-end gap-1">
                       {whatsappUrl(a) && (
-                        <a data-testid={`whatsapp-appt-${a.id}`} href={whatsappUrl(a)} target="_blank" rel="noopener noreferrer" title="Enviar lembrete no WhatsApp" className="p-2 rounded-lg text-emerald-400 hover:bg-emerald-500/10"><MessageCircle className="h-4 w-4" /></a>
+                        <a
+                          data-testid={`whatsapp-appt-${a.id}`}
+                          href={whatsappUrl(a)}
+                          onClick={async () => {
+                            try {
+                              await api.post(`/crm-assistant/appointments/${a.id}/mark-reminded`);
+                              load();
+                            } catch (_) {}
+                          }}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={a.reminded ? "Lembrete já registrado (clique para reenviar)" : "Enviar lembrete 2h no WhatsApp"}
+                          className={`p-2 rounded-lg transition-colors ${
+                            a.reminded
+                              ? "text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20"
+                              : "text-emerald-400 hover:bg-emerald-500/10"
+                          }`}
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                        </a>
                       )}
                       {a.status !== "Concluído" && (
                         <button data-testid={`complete-appt-${a.id}`} onClick={() => setStatus(a.id, "Concluído")} title="Concluir" className="p-2 rounded-lg text-emerald-400 hover:bg-emerald-500/10"><CheckCircle2 className="h-4 w-4" /></button>

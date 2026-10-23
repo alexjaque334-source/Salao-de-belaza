@@ -12,6 +12,8 @@ import {
   RefreshCw,
   Send,
   SlidersHorizontal,
+  BellRing,
+  CheckCircle2,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { api, apiError } from "@/lib/api";
@@ -21,7 +23,7 @@ import { btnPrimary, btnSecondary, card, input, badge } from "@/lib/styles";
 export default function CrmAssistant() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("inactive"); // inactive | birthdays | loyalty
+  const [activeTab, setActiveTab] = useState("today"); // today | inactive | birthdays | loyalty
   const [search, setSearch] = useState("");
 
   // Custom modal state
@@ -56,10 +58,27 @@ export default function CrmAssistant() {
     }
   };
 
-  const openWhatsApp = (url) => {
+  const openWhatsApp = async (url, appointmentId = null) => {
     if (!url) {
       toast.error("Telefone não cadastrado para este cliente.");
       return;
+    }
+    if (appointmentId) {
+      try {
+        await api.post(`/crm-assistant/appointments/${appointmentId}/mark-reminded`);
+        // Update local state without full reload
+        setData((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            today_reminders: prev.today_reminders.map((r) =>
+              r.appointment_id === appointmentId ? { ...r, reminder_sent: true } : r
+            ),
+          };
+        });
+      } catch (e) {
+        // Continue even if marking fails
+      }
     }
     window.open(url, "_blank", "noopener,noreferrer");
   };
@@ -93,7 +112,17 @@ export default function CrmAssistant() {
     }
   };
 
-  const stats = data?.stats || { inactive_count: 0, birthdays_count: 0, loyalty_count: 0, total_opportunities: 0 };
+  const stats = data?.stats || {
+    today_reminders_count: 0,
+    inactive_count: 0,
+    birthdays_count: 0,
+    loyalty_count: 0,
+    total_opportunities: 0,
+  };
+
+  const todayList = (data?.today_reminders || []).filter((c) =>
+    `${c.name} ${c.phone} ${c.barber_name} ${c.time}`.toLowerCase().includes(search.toLowerCase())
+  );
 
   const inactiveList = (data?.inactive_clients || []).filter((c) =>
     `${c.name} ${c.phone} ${c.preferred_barber}`.toLowerCase().includes(search.toLowerCase())
@@ -112,7 +141,7 @@ export default function CrmAssistant() {
       <PageHeader
         eyebrow="IA & CRM"
         title="Assistente CRM"
-        subtitle="Seu copiloto inteligente para resgate de clientes sumidos, aniversários e fidelidade via WhatsApp."
+        subtitle="Seu copiloto inteligente para zerar faltas (no-show), resgatar clientes sumidos e fidelizar via WhatsApp."
         action={
           <button onClick={loadData} disabled={loading} className={btnSecondary + " flex items-center gap-2"}>
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} /> Atualizar oportunidades
@@ -121,7 +150,25 @@ export default function CrmAssistant() {
       />
 
       {/* Metrics Banner */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <button
+          onClick={() => setActiveTab("today")}
+          className={`${card} p-5 text-left transition-all ${
+            activeTab === "today" ? "border-amber-500/60 bg-amber-500/5 shadow-md shadow-amber-900/20" : "hover:border-border/80"
+          }`}
+        >
+          <div className="flex items-center justify-between text-muted-foreground mb-2">
+            <span className="text-xs uppercase font-semibold tracking-wider flex items-center gap-1.5 text-amber-400">
+              <BellRing className="h-4 w-4" /> Lembretes Hoje (2h)
+            </span>
+            <span className="text-xs bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full font-bold">
+              {stats.today_reminders_count}
+            </span>
+          </div>
+          <div className="font-display text-3xl font-extrabold text-foreground">{stats.today_reminders_count}</div>
+          <p className="text-xs text-muted-foreground mt-1">Zere faltas com confirmação no WhatsApp.</p>
+        </button>
+
         <button
           onClick={() => setActiveTab("inactive")}
           className={`${card} p-5 text-left transition-all ${
@@ -129,15 +176,15 @@ export default function CrmAssistant() {
           }`}
         >
           <div className="flex items-center justify-between text-muted-foreground mb-2">
-            <span className="text-xs uppercase font-semibold tracking-wider flex items-center gap-1.5 text-amber-400">
+            <span className="text-xs uppercase font-semibold tracking-wider flex items-center gap-1.5 text-rose-400">
               <Clock className="h-4 w-4" /> Sumidos (+45 dias)
             </span>
-            <span className="text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full font-bold">
+            <span className="text-xs bg-rose-500/10 text-rose-400 px-2 py-0.5 rounded-full font-bold">
               {stats.inactive_count}
             </span>
           </div>
           <div className="font-display text-3xl font-extrabold text-foreground">{stats.inactive_count}</div>
-          <p className="text-xs text-muted-foreground mt-1">Clientes prontos para um novo corte.</p>
+          <p className="text-xs text-muted-foreground mt-1">Clientes prontos para reengajamento.</p>
         </button>
 
         <button
@@ -155,7 +202,7 @@ export default function CrmAssistant() {
             </span>
           </div>
           <div className="font-display text-3xl font-extrabold text-foreground">{stats.birthdays_count}</div>
-          <p className="text-xs text-muted-foreground mt-1">Oportunidades de felicitação e oferta.</p>
+          <p className="text-xs text-muted-foreground mt-1">Felicitações e promoções exclusivas.</p>
         </button>
 
         <button
@@ -173,16 +220,24 @@ export default function CrmAssistant() {
             </span>
           </div>
           <div className="font-display text-3xl font-extrabold text-foreground">{stats.loyalty_count}</div>
-          <p className="text-xs text-muted-foreground mt-1">Clientes com cortes grátis ou quase lá.</p>
+          <p className="text-xs text-muted-foreground mt-1">Cortes cortesia e metas quase lá.</p>
         </button>
       </div>
 
       {/* Search & Tabs */}
       <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-        <div className="flex items-center gap-2 bg-secondary/50 p-1 rounded-xl border border-border">
+        <div className="flex items-center gap-1 bg-secondary/50 p-1 rounded-xl border border-border overflow-x-auto">
+          <button
+            onClick={() => setActiveTab("today")}
+            className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
+              activeTab === "today" ? "bg-amber-500 text-zinc-950 shadow" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Lembretes Hoje ({stats.today_reminders_count})
+          </button>
           <button
             onClick={() => setActiveTab("inactive")}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+            className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
               activeTab === "inactive" ? "bg-amber-500 text-zinc-950 shadow" : "text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -190,7 +245,7 @@ export default function CrmAssistant() {
           </button>
           <button
             onClick={() => setActiveTab("birthdays")}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+            className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
               activeTab === "birthdays" ? "bg-amber-500 text-zinc-950 shadow" : "text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -198,7 +253,7 @@ export default function CrmAssistant() {
           </button>
           <button
             onClick={() => setActiveTab("loyalty")}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+            className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all whitespace-nowrap ${
               activeTab === "loyalty" ? "bg-amber-500 text-zinc-950 shadow" : "text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -221,7 +276,59 @@ export default function CrmAssistant() {
       {loading ? (
         <div className={card + " p-12 text-center text-muted-foreground"}>
           <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2 text-amber-500" />
-          Analisando histórico de agendamentos e oportunidades de CRM...
+          Analisando horários de hoje e oportunidades de CRM...
+        </div>
+      ) : activeTab === "today" ? (
+        <div className="space-y-3">
+          {todayList.length === 0 ? (
+            <div className={card + " p-10 text-center text-muted-foreground"}>
+              Nenhum agendamento confirmado para hoje.
+            </div>
+          ) : (
+            todayList.map((c) => (
+              <div
+                key={c.appointment_id}
+                className={card + " p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-amber-500/30 transition-all"}
+              >
+                <div className="space-y-1.5 flex-1">
+                  <div className="flex items-center gap-2.5">
+                    <span className="font-display font-bold text-base text-foreground">{c.name}</span>
+                    <span className={badge("bg-amber-500/20 text-amber-300 border-amber-500/30 font-bold")}>
+                      Hoje às {c.time}
+                    </span>
+                    {c.reminder_sent && (
+                      <span className={badge("bg-emerald-500/10 text-emerald-400 border-emerald-500/20 flex items-center gap-1")}>
+                        <CheckCircle2 className="h-3 w-3" /> Lembrete Enviado
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
+                    <span>Telefone: <strong>{c.phone || "—"}</strong></span>
+                    <span>Serviço: <strong>{c.service_name}</strong></span>
+                    <span>Barbeiro: <strong>{c.barber_name}</strong></span>
+                  </div>
+                  <div className="rounded-lg bg-secondary/50 border border-border p-2.5 text-xs text-zinc-300 font-mono whitespace-pre-wrap max-w-2xl mt-2">
+                    {c.suggested_message}
+                  </div>
+                </div>
+
+                <div className="flex md:flex-col gap-2 shrink-0">
+                  <button
+                    onClick={() => openWhatsApp(c.whatsapp_url, c.appointment_id)}
+                    className={btnPrimary + " flex items-center justify-center gap-2 text-xs py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white"}
+                  >
+                    <MessageCircle className="h-4 w-4" /> Enviar Lembrete 2h
+                  </button>
+                  <button
+                    onClick={() => copyToClipboard(c.suggested_message)}
+                    className={btnSecondary + " flex items-center justify-center gap-2 text-xs py-2 px-3"}
+                  >
+                    <Copy className="h-3.5 w-3.5" /> Copiar texto
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       ) : activeTab === "inactive" ? (
         <div className="space-y-3">
